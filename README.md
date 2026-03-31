@@ -1,5 +1,13 @@
 # AISprinkler
 
+> **⚠ Work in Progress — Concept Only**
+>
+> This project is in active development and has **not been system-tested**.
+> No end-to-end or hardware validation has been performed.
+> All design decisions, flows, and configurations described here are
+> architectural concepts and are subject to change.
+> Do not use in production.
+
 This repository contains AISprinkler design documentation and Clean Architecture scaffolding.
 
 Execution model: runtime and tests are Docker-only.
