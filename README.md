@@ -33,7 +33,20 @@ AISprinkler starts from a daily preset irrigation schedule stored in a database,
 - Scope target: single device only
 - Decision gate: auto-apply above threshold, manual review below threshold
 - Weather strategy: multi-provider with fallback
+- LLM strategy: configurable provider — OpenAI, Anthropic, or Ollama (local)
 - Governance: internal auditability and traceability by default
+
+## LLM Provider Configuration
+
+The AI decision agent supports three providers, selected via the `LLM_PROVIDER` environment variable:
+
+| `LLM_PROVIDER` | Default model | Requires |
+|---|---|---|
+| `openai` (default) | `gpt-4.1` | `OPENAI_API_KEY` |
+| `anthropic` | `claude-3-7-sonnet` | `ANTHROPIC_API_KEY` |
+| `ollama` | `llama3.2` | Running Ollama server (`OLLAMA_BASE_URL`) |
+
+Override the model with `LLM_MODEL`. See [LangChain Config Spec](docs/LANGCHAIN_CONFIG_SPEC.md) for full details.
 
 ## Document Map
 

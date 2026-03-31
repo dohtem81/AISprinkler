@@ -87,3 +87,35 @@ Each recommendation must store:
 - policy_version
 
 This enables replay and audit reproduction.
+
+## 11. LLM Provider Configuration
+
+The agent implementation supports multiple LLM providers, selected at runtime without
+code changes.
+
+Selection order (highest priority first):
+
+1. `provider` constructor argument
+2. `LLM_PROVIDER` environment variable
+3. Default: `openai`
+
+Supported providers:
+
+| Provider | `LLM_PROVIDER` value | Default model | API key required |
+|---|---|---|---|
+| OpenAI | `openai` | `gpt-4.1` | Yes — `OPENAI_API_KEY` |
+| Anthropic | `anthropic` | `claude-3-7-sonnet` | Yes — `ANTHROPIC_API_KEY` |
+| Ollama (local) | `ollama` | `llama3.2` | No — set `OLLAMA_BASE_URL` |
+
+Model name is independently overridable via the `LLM_MODEL` env var or constructor
+argument.  This keeps the model name orthogonal to the provider choice.
+
+Ollama-specific notes:
+
+- Any model pulled via `ollama pull <model>` can be used.
+- Smaller models may require raising `retries_on_schema_error` due to less reliable
+  JSON output.
+- `model_version` in the stored `Recommendation` will be empty for Ollama (not
+  returned by the Ollama API).
+
+Full configuration reference: `docs/LANGCHAIN_CONFIG_SPEC.md §9`.

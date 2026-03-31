@@ -4,7 +4,7 @@ profile:
   mode: run-scoped
 models:
   primary:
-    provider: openai
+    provider: openai          # openai | anthropic | ollama
     model: gpt-4.1
     temperature: 0.2
     max_output_tokens: 800
@@ -13,6 +13,14 @@ models:
     model: claude-3-7-sonnet
     temperature: 0.2
     max_output_tokens: 800
+  # ── Ollama example (local / air-gapped deployments) ───────────────────
+  # Uncomment and set LLM_PROVIDER=ollama  +  OLLAMA_BASE_URL in .env
+  # primary:
+  #   provider: ollama
+  #   model: llama3.2          # any model pulled via `ollama pull <model>`
+  #   temperature: 0.2
+  #   max_output_tokens: 800
+  #   ollama_base_url: http://ollama:11434  # service name in docker-compose
 agent:
   max_iterations: 5
   timeout_ms: 15000

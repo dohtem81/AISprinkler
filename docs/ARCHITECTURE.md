@@ -42,13 +42,25 @@ Responsibilities:
 - Normalize observations and forecasts
 - Persist snapshot used for decision
 
-### 3.3 AI Decision Agent (LangChain)
+### 3.3 AI Decision Agent
 
 Responsibilities:
 
 - Consume baseline schedule + normalized weather + policy context
 - Produce structured recommendation with rationale and confidence
 - Stay inside deterministic bounds defined in policy
+
+Implementation: `LangChainAgentAdapter` (`infrastructure/agent/langchain_agent.py`).
+
+LLM provider is **runtime-configurable** via the `LLM_PROVIDER` environment variable:
+
+| Provider | Value | Notes |
+|---|---|---|
+| OpenAI (default) | `openai` | Requires `OPENAI_API_KEY` |
+| Anthropic | `anthropic` | Requires `ANTHROPIC_API_KEY` |
+| Ollama (local) | `ollama` | No API key; set `OLLAMA_BASE_URL` |
+
+Model name is further overridable via `LLM_MODEL`. See `docs/LANGCHAIN_CONFIG_SPEC.md §9`.
 
 ### 3.4 Deterministic Rule Engine
 

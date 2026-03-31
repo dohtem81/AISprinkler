@@ -103,18 +103,26 @@ No use case instantiates a concrete class directly.
 
 ```python
 # Correct: infrastructure wires concrete adapters into the use case
+# LLM_PROVIDER env var selects openai | anthropic | ollama at runtime
+agent = LangChainAgentAdapter(
+    provider=os.getenv("LLM_PROVIDER", "openai"),   # or "ollama" for local
+    model_name=os.getenv("LLM_MODEL"),               # None → provider default
+    ollama_base_url=os.getenv("OLLAMA_BASE_URL"),    # ignored unless provider=ollama
+)
+
 use_case = RunDailyAdjustmentUseCase(
     schedule_repo=SqlAlchemyScheduleRepository(session),
     run_repo=SqlAlchemyRunRepository(session),
     weather_port=OpenWeatherAdapter(api_key=settings.openweather_key),
-    agent_port=LangChainAgentAdapter(llm=llm, parser=parser),
+    agent_port=agent,
     executor_port=GenericDeviceAdapter(device_config=device_cfg),
     rule_engine=RuleEngine(),
     confidence_threshold=settings.confidence_auto_apply_threshold,
 )
 ```
 
-This pattern makes it trivial to swap any adapter in tests or production.
+This pattern makes it trivial to swap any adapter — including the LLM provider — in
+tests or production with no code changes.
 
 ---
 

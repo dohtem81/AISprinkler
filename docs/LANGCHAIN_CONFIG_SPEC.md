@@ -78,6 +78,57 @@ On parse failure:
 - If model provider fails, route to fallback model profile.
 - When fallback path is used, add confidence penalty as defined in policy process notes.
 
+## 9. Ollama Provider (Local / Air-Gapped)
+
+Ollama allows running open-source LLMs locally without an API key.  It is selected
+by setting `LLM_PROVIDER=ollama` in the environment.
+
+| Parameter | Env var | Default |
+|---|---|---|
+| Provider | `LLM_PROVIDER` | `openai` |
+| Model | `LLM_MODEL` | `llama3.2` |
+| Server URL | `OLLAMA_BASE_URL` | `http://localhost:11434` |
+
+### Quickstart
+
+```bash
+# 1. Pull the model on the host running Ollama
+ollama pull llama3.2
+
+# 2. Set env vars in .env
+LLM_PROVIDER=ollama
+OLLAMA_BASE_URL=http://host.docker.internal:11434   # or http://ollama:11434 if added to compose
+
+# 3. Run normally
+make dev
+```
+
+### Adding Ollama as a Docker Compose service (optional)
+
+Add the following service to `docker/docker-compose.yml` to run Ollama inside the
+compose stack:
+
+```yaml
+ollama:
+  image: ollama/ollama:latest
+  volumes:
+    - ollama_data:/root/.ollama
+  expose:
+    - "11434"
+```
+
+Then set `OLLAMA_BASE_URL=http://ollama:11434` in the `app` / `worker` service
+environment.
+
+### Limitations
+
+- Ollama does not require an API key; `OPENAI_API_KEY` and `ANTHROPIC_API_KEY` are
+  ignored when `LLM_PROVIDER=ollama`.
+- Output quality depends on the chosen model.  Smaller models may not reliably
+  produce the required JSON schema — increase `retries_on_schema_error` if needed.
+- The `model_version` field in `Recommendation` is not populated for Ollama (Ollama
+  does not expose a version string in its response).
+
 ## 9. Configuration Management
 
 - Keep config in versioned yaml files.
