@@ -1,0 +1,30 @@
+version: 1
+scheduler:
+  timezone: UTC
+  queues:
+    default: sprinkler-default
+    manual_review: sprinkler-manual-review
+jobs:
+  daily_adjustment:
+    cron: "0 6 * * *"
+    trigger_type: daily
+    dedupe_key_template: "{device_id}:{run_date}:{trigger_type}"
+  manual_review_processor:
+    cron: "*/10 * * * *"
+    trigger_type: maintenance
+retries:
+  weather_provider_timeout:
+    max_attempts: 2
+    fallback_provider: true
+  agent_timeout:
+    max_attempts: 1
+    fallback_model: true
+  adapter_timeout:
+    max_attempts: 1
+    idempotent_resend: true
+fallbacks:
+  on_data_unavailable: baseline_keep
+  on_invalid_agent_output: baseline_keep
+alerts:
+  on_run_failed: high
+  on_manual_review_backlog_exceeded: medium

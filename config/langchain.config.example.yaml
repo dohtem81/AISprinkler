@@ -1,0 +1,41 @@
+version: 1
+profile:
+  name: sprinkler-decision-v1
+  mode: run-scoped
+models:
+  primary:
+    provider: openai
+    model: gpt-4.1
+    temperature: 0.2
+    max_output_tokens: 800
+  fallback:
+    provider: anthropic
+    model: claude-3-7-sonnet
+    temperature: 0.2
+    max_output_tokens: 800
+agent:
+  max_iterations: 5
+  timeout_ms: 15000
+  schema_validation_required: true
+  retries:
+    schema_error: 1
+    model_timeout: 1
+tools:
+  required:
+    - get_baseline_schedule
+    - get_rain_last_24h
+    - get_forecast_next_24h
+    - get_policy_snapshot
+  timeout_ms:
+    weather: 4000
+    database: 2000
+tracing:
+  capture:
+    - correlation_id
+    - run_id
+    - model_name
+    - model_version
+    - prompt_version
+    - policy_version
+    - token_usage
+    - step_latency_ms
