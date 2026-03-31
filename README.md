@@ -1,8 +1,22 @@
-# AISprinkler (Design-Phase Repository)
+# AISprinkler
 
-This repository contains implementation-ready design documentation for AISprinkler.
+This repository contains AISprinkler design documentation and Clean Architecture scaffolding.
 
-Current phase scope is design only. No runtime services are implemented yet.
+Execution model: runtime and tests are Docker-only.
+
+## Docker-Only Policy
+
+- Run the API, worker, and dependencies via Docker Compose.
+- Run all test suites via Docker Compose.
+- Do not run project runtime or tests with local host Python commands.
+
+Primary commands:
+
+- `make up-all` (start services)
+- `make test` (all tests)
+- `make test-unit` (unit tests in Docker)
+- `make test-integration` (integration tests in Docker)
+- `make test-cov` (coverage in Docker)
 
 ## Project Goal
 

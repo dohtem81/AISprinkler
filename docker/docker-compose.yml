@@ -1,0 +1,81 @@
+# =============================================================================
+# AISprinkler – Docker Compose
+# Services: db, redis, app (FastAPI), worker (Celery), test
+# =============================================================================
+
+services:
+
+  # ── PostgreSQL ──────────────────────────────────────────────────────────────
+  db:
+    image: postgres:16-alpine
+    environment:
+      POSTGRES_DB: aisprinkler
+      POSTGRES_USER: aisprinkler
+      POSTGRES_PASSWORD: aisprinkler
+    volumes:
+      - postgres_data:/var/lib/postgresql/data
+    healthcheck:
+      test: ["CMD-SHELL", "pg_isready -U aisprinkler"]
+      interval: 5s
+      timeout: 5s
+      retries: 10
+
+  # ── Redis ────────────────────────────────────────────────────────────────────
+  redis:
+    image: redis:7-alpine
+    healthcheck:
+      test: ["CMD", "redis-cli", "ping"]
+      interval: 5s
+      timeout: 5s
+      retries: 10
+
+  # ── FastAPI App ──────────────────────────────────────────────────────────────
+  app:
+    build:
+      context: ..
+      dockerfile: docker/Dockerfile
+      target: app
+    ports:
+      - "8000:8000"
+    env_file:
+      - ../.env
+    depends_on:
+      db:
+        condition: service_healthy
+      redis:
+        condition: service_healthy
+    volumes:
+      - ../src:/app/src   # hot-reload in dev
+
+  # ── Celery Worker ─────────────────────────────────────────────────────────────
+  worker:
+    build:
+      context: ..
+      dockerfile: docker/Dockerfile
+      target: worker
+    env_file:
+      - ../.env
+    depends_on:
+      db:
+        condition: service_healthy
+      redis:
+        condition: service_healthy
+
+  # ── Test Runner ──────────────────────────────────────────────────────────────
+  test:
+    build:
+      context: ..
+      dockerfile: docker/Dockerfile.test
+    env_file:
+      - ../.env.test
+    environment:
+      DATABASE_URL: postgresql+asyncpg://aisprinkler:aisprinkler@db:5432/aisprinkler
+      REDIS_URL: redis://redis:6379/1
+    depends_on:
+      db:
+        condition: service_healthy
+      redis:
+        condition: service_healthy
+
+volumes:
+  postgres_data:

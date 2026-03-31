@@ -72,6 +72,17 @@ Minimum metrics:
 
 ## 6. Replay and Reproducibility
 
+### 5.1 Alert Thresholds
+
+| Metric | Condition | Severity |
+|---|---|---|
+| execution_failure_rate | > 20 % over rolling 24 h | HIGH |
+| auto_apply_rate | < 50 % over rolling 7 days | MEDIUM |
+| manual_review_rate | > 40 % over rolling 7 days | MEDIUM |
+| fallback_weather_provider_rate | > 30 % over rolling 24 h | MEDIUM |
+| fallback_model_rate | > 10 % over rolling 24 h | HIGH |
+| average_decision_latency_ms | p95 > 30 000 ms | MEDIUM |
+
 A run is replayable when these conditions are met:
 
 - input snapshot retained

@@ -83,6 +83,10 @@ Responsibilities:
 6. Approved command is sent to execution adapter.
 7. Receipt and all trace artifacts are persisted.
 
+Run state names and valid transitions for each step above are defined in
+`docs/ORCHESTRATION.md §3` (10 states: queued → collecting_data → reasoning →
+rule_check → approval_gate → dispatching → verifying → closed | failed | manual_review).
+
 ## 5. Runtime Responsibility Split
 
 - LLM decides recommendation inside policy envelope.
