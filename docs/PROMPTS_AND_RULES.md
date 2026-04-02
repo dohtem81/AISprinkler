@@ -2,6 +2,11 @@
 
 This document is the normative source for decision thresholds, action bounds, and confidence gating.
 
+Runtime note:
+
+- The running application loads policy/rule text from `config/SPRINKLER_LLM_RULES.md`.
+- This document remains the design reference and must stay aligned with runtime policy content.
+
 ## 1. Policy Version
 
 - policy_version: v1.0.0

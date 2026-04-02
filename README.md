@@ -8,7 +8,8 @@
 > architectural concepts and are subject to change.
 > Do not use in production.
 
-This repository contains AISprinkler design documentation and Clean Architecture scaffolding.
+This repository contains AISprinkler documentation and implementation code for
+weather-aware sprinkler schedule adjustments with full run traceability.
 
 Execution model: runtime and tests are Docker-only.
 
@@ -20,11 +21,59 @@ Execution model: runtime and tests are Docker-only.
 
 Primary commands:
 
+macOS/Linux (`make`):
+
 - `make up-all` (start services)
 - `make test` (all tests)
 - `make test-unit` (unit tests in Docker)
 - `make test-integration` (integration tests in Docker)
 - `make test-cov` (coverage in Docker)
+
+Windows PowerShell (`docker compose`):
+
+- `docker compose -f docker/docker-compose.yml up -d` (start services)
+- `docker compose -f docker/docker-compose.yml run --build --rm test` (all tests)
+- `docker compose -f docker/docker-compose.yml run --build --rm test pytest tests/unit -v --tb=short` (unit tests in Docker)
+- `docker compose -f docker/docker-compose.yml run --build --rm test pytest tests/integration -v --tb=short` (integration tests in Docker)
+- `docker compose -f docker/docker-compose.yml run --build --rm test pytest --cov=src/aisprinkler --cov-report=html:htmlcov` (coverage in Docker)
+
+Optional local LLM via Ollama (Docker profile):
+
+- `docker compose -f docker/docker-compose.yml --profile local-llm up -d ollama` (start Ollama service)
+- Set `AGENT_MODE=langchain`, `LLM_PROVIDER=ollama`, `OLLAMA_BASE_URL=http://ollama:11434` in `.env`
+- Pull a model once: `docker compose -f docker/docker-compose.yml --profile local-llm exec ollama ollama pull llama3.2`
+- Start app/worker: `docker compose -f docker/docker-compose.yml --profile local-llm up -d app worker`
+
+Database and cache viewers included in Docker Compose:
+
+- PostgreSQL viewer: `http://localhost:8080`
+- Redis viewer: `http://localhost:8081`
+
+These viewers are intended for local development only.
+
+Database bootstrap behavior:
+
+- On API startup and before adjustment execution, the application creates managed tables if they do not exist.
+- Missing columns for managed tables are added automatically.
+- If no dated baseline exists, the application seeds a default device and populates both `original` and `current` baseline schedules for the next 7 days.
+- If a legacy weekday-based `baseline_schedule` table exists, startup expands it into dated rows for the visible week-ahead window.
+- Week-ahead schedules can be queried from `GET /api/v1/schedules?device_id=<uuid>&days=7`.
+
+Adminer connection values:
+
+- System: `PostgreSQL`
+- Server: `db`
+- Username: `aisprinkler`
+- Password: `aisprinkler`
+- Database: `aisprinkler`
+
+Redis Commander is preconfigured to connect to the `redis` service with the current Compose defaults.
+
+Production note:
+
+- The current Docker Compose setup uses development-friendly values in the repository for local use.
+- In production, database credentials, API keys, device identifiers, and any similar sensitive values must be stored in Docker secrets or an external secret manager, not committed to the repository.
+- Adminer and Redis Commander should not be exposed in production unless they are explicitly secured and operationally justified.
 
 ## Project Goal
 
@@ -43,6 +92,20 @@ AISprinkler starts from a daily preset irrigation schedule stored in a database,
 - Weather strategy: multi-provider with fallback
 - LLM strategy: configurable provider — OpenAI, Anthropic, or Ollama (local)
 - Governance: internal auditability and traceability by default
+
+## Current Implementation Snapshot
+
+- Dated schedule persistence is implemented with immutable `original_baseline_schedule`
+	and versioned `current_baseline_schedule` rows.
+- Weather ingestion persists hourly data and refreshes the upcoming horizon by replacing
+	future forecast rows on each pull.
+- Forecast horizon supports next 7 days (hourly + daily rollups).
+- LLM prompting is driven by `config/SPRINKLER_LLM_RULES.md` and guarded by
+	post-parse coercion for clearly invalid/copy-like outputs.
+- Grafana dashboard includes weather trends, schedule comparison, and LLM
+	sent/received prompt exchange visibility.
+- Historical support scripts exist for baseline backfill and replay:
+	`scripts/create_baseline_last30d.py` and `scripts/adjust_schedule_last30d.py`.
 
 ## LLM Provider Configuration
 
@@ -83,11 +146,15 @@ Override the model with `LLM_MODEL`. See [LangChain Config Spec](docs/LANGCHAIN_
 
 ## Source of Truth Rule
 
-Thresholds and decision policy are normative in:
+Runtime thresholds and decision policy are loaded from:
+
+- `config/SPRINKLER_LLM_RULES.md`
+
+Design-time policy narrative is documented in:
 
 - [Prompts and Rules](docs/PROMPTS_AND_RULES.md)
 
-Other documents reference this policy and must not redefine conflicting values.
+Other documents must not redefine conflicting values.
 
 ## Intended Runtime Flow (Design)
 
@@ -105,3 +172,12 @@ Other documents reference this policy and must not redefine conflicting values.
 - Zone-level optimization
 - Autonomous model retraining
 - Complex soil digital twin modeling
+
+## To Do
+
+- Add more tests with other LLM providers/models.
+- Expand testing depth for the currently selected LLM.
+- Improve observability transparency and make run-level behavior easier to track.
+- Investigate why recommendations currently reduce/skip in practice and rarely increase.
+- Future-proof operational setup for production readiness.
+- Implement scheduled trigger every 6 hours to refresh sprinkler schedules.

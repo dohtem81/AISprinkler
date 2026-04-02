@@ -1,0 +1,27 @@
+apiVersion: 1
+
+datasources:
+  - name: AISprinkler Postgres
+    uid: postgres
+    type: postgres
+    access: proxy
+    url: db:5432
+    database: aisprinkler
+    user: aisprinkler
+    secureJsonData:
+      password: aisprinkler
+    jsonData:
+      sslmode: disable
+      postgresVersion: 1600
+      timescaledb: false
+      connMaxLifetime: 14400
+      maxOpenConns: 100
+      maxIdleConns: 100
+
+  - name: AISprinkler Loki
+    uid: loki
+    type: loki
+    access: proxy
+    url: http://loki:3100
+    jsonData:
+      maxLines: 1000

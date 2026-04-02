@@ -19,6 +19,7 @@ RUN apt-get update && apt-get install -y --no-install-recommends \
 # Copy source before editable install so package discovery succeeds.
 COPY pyproject.toml ./
 COPY src/ ./src/
+COPY config/ ./config/
 RUN pip install --no-cache-dir -e .
 
 # ── App stage ─────────────────────────────────────────────────────────────────

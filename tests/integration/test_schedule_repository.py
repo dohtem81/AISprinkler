@@ -11,8 +11,7 @@ from datetime import date, time
 import pytest
 from sqlalchemy.ext.asyncio import AsyncSession
 
-from aisprinkler.domain.entities.baseline_schedule import BaselineSchedule  # noqa: E501
-from aisprinkler.domain.value_objects.season import SeasonCode
+from aisprinkler.domain.entities.baseline_schedule import BaselineKind, BaselineSchedule
 from aisprinkler.infrastructure.persistence.schedule_repo import (
     SqlAlchemyScheduleRepository,
 )
@@ -32,12 +31,10 @@ def device_id(device_in_db: uuid.UUID) -> uuid.UUID:
 def _summer_monday(device_id: uuid.UUID) -> BaselineSchedule:
     return BaselineSchedule(
         device_id=device_id,
-        day_of_week=0,  # Monday
-        season_code=SeasonCode.SUMMER,
-        effective_month_start=5,
-        effective_month_end=9,
+        schedule_date=date(2026, 7, 6),
         start_time=time(5, 30),
         duration_minutes=25,
+        baseline_kind=BaselineKind.CURRENT,
         grass_type="bermuda",
     )
 
@@ -55,14 +52,14 @@ class TestGetActiveForDate:
         assert len(results) == 1
         assert results[0].duration_minutes == 25
 
-    async def test_no_result_for_wrong_season(
+    async def test_no_result_for_wrong_date(
         self, repo: SqlAlchemyScheduleRepository, device_id: uuid.UUID
     ) -> None:
         schedule = _summer_monday(device_id)
         await repo.save(schedule)
 
-        monday_in_january = date(2026, 1, 5)  # Monday, January → winter
-        results = await repo.get_active_for_date(device_id, monday_in_january)
+        next_day = date(2026, 7, 7)
+        results = await repo.get_active_for_date(device_id, next_day)
 
         assert results == []
 
@@ -77,3 +74,32 @@ class TestGetActiveForDate:
         results = await repo.get_active_for_date(device_id, monday_in_july)
 
         assert results == []
+
+    async def test_range_query_returns_original_and_current(
+        self, repo: SqlAlchemyScheduleRepository, device_id: uuid.UUID
+    ) -> None:
+        schedule_date = date(2026, 7, 6)
+        await repo.save(
+            BaselineSchedule(
+                device_id=device_id,
+                schedule_date=schedule_date,
+                start_time=time(5, 30),
+                duration_minutes=25,
+                baseline_kind=BaselineKind.ORIGINAL,
+                grass_type="bermuda",
+            )
+        )
+        await repo.save(
+            BaselineSchedule(
+                device_id=device_id,
+                schedule_date=schedule_date,
+                start_time=time(5, 30),
+                duration_minutes=20,
+                baseline_kind=BaselineKind.CURRENT,
+                grass_type="bermuda",
+            )
+        )
+
+        results = await repo.list_for_range(device_id, schedule_date, schedule_date)
+
+        assert len(results) == 2

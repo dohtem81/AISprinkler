@@ -15,14 +15,14 @@ from aisprinkler.application.ports.executor_port import (
 )
 from aisprinkler.application.ports.weather_port import WeatherPort
 from aisprinkler.domain.entities.adjustment_run import AdjustmentRun, RunState, TriggerType
-from aisprinkler.domain.entities.baseline_schedule import BaselineSchedule
+from aisprinkler.domain.entities.baseline_schedule import BaselineKind, BaselineSchedule
 from aisprinkler.domain.repositories.run_repository import RunRepository
 from aisprinkler.domain.repositories.schedule_repository import ScheduleRepository
+from aisprinkler.domain.value_objects.agent_decision_trace import AgentDecisionTrace
 from aisprinkler.domain.value_objects.recommendation import (
     Recommendation,
     RecommendationAction,
 )
-from aisprinkler.domain.value_objects.season import SeasonCode
 from aisprinkler.domain.value_objects.weather_context import WeatherContext
 
 # ── Shared IDs ────────────────────────────────────────────────────────────────
@@ -47,12 +47,10 @@ def run_date() -> date:
 def summer_schedule() -> BaselineSchedule:
     return BaselineSchedule(
         device_id=DEVICE_ID,
-        day_of_week=1,          # Tuesday
-        season_code=SeasonCode.SUMMER,
-        effective_month_start=5,
-        effective_month_end=9,
+        schedule_date=RUN_DATE,
         start_time=time(5, 30),
         duration_minutes=25,
+        baseline_kind=BaselineKind.CURRENT,
         grass_type="bermuda",
     )
 
@@ -129,7 +127,13 @@ def mock_weather_port(dry_weather: WeatherContext) -> WeatherPort:
 @pytest.fixture()
 def mock_agent_port(high_confidence_keep_recommendation: Recommendation) -> AgentPort:
     port = AsyncMock(spec=AgentPort)
-    port.recommend.return_value = high_confidence_keep_recommendation
+    port.recommend.return_value = AgentDecisionTrace(
+        recommendation=high_confidence_keep_recommendation,
+        prompt_text="unit-test prompt",
+        response_text="unit-test response",
+        request_payload={"fixture": True},
+        response_payload={"action": high_confidence_keep_recommendation.action.value},
+    )
     return port
 
 
@@ -163,4 +167,5 @@ def mock_run_repo() -> RunRepository:
 
     repo.create.side_effect = create_side_effect
     repo.update_state.return_value = None
+    repo.save_agent_trace.return_value = None
     return repo

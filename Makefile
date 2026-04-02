@@ -1,4 +1,4 @@
-.PHONY: help build up down test test-unit test-integration lint typecheck migrate seed logs
+.PHONY: help build up down test test-unit test-integration lint typecheck migrate seed logs weather-history
 
 DOCKER_COMPOSE = docker compose -f docker/docker-compose.yml
 
@@ -75,6 +75,9 @@ retry-run:  ## Retry a failed run in Docker (ARGS: RUN_ID=<uuid>)
 
 process-reviews:  ## Process pending manual review queue in Docker
 	$(DOCKER_COMPOSE) run --rm app python scripts/process_manual_reviews.py
+
+weather-history:  ## Backfill weather history into DB (HISTORY_DAYS env controls window)
+	$(DOCKER_COMPOSE) run --rm app python scripts/weather_spanishfort.py
 
 # ── Dev ───────────────────────────────────────────────────────────────────────
 

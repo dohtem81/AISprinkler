@@ -1,32 +1,27 @@
 -- =============================================================================
--- Alabama Baseline Irrigation Schedule – Seed Data
+-- Alabama Baseline Irrigation Schedule – Dated Seed Data
 -- =============================================================================
 -- Source of schedule values: docs/BASELINE_SCHEDULE_ALABAMA.md
 -- Policy version: v1.0.0
 -- Grass type: Bermuda (most common in Alabama; adjust duration for other types)
 -- Timezone: America/Chicago (Alabama is Central Time)
 --
--- day_of_week convention: 0=Monday … 6=Sunday (Python datetime.weekday())
+-- This seed populates the next 7 days of both:
+--   - original_baseline_schedule
+--   - current_baseline_schedule
 --
--- Seasonal ranges:
---   spring  : effective_month_start=3,  effective_month_end=4
---   summer  : effective_month_start=5,  effective_month_end=9
---   fall    : effective_month_start=10, effective_month_end=11
---   winter  : effective_month_start=12, effective_month_end=2  (year-wrap)
+-- The seed is non-destructive:
+--   - original rows are inserted only when the same date/time slot is missing
+--   - current rows are inserted only when there is no active visible row
 --
--- The orchestrator identifies the active seasonal block for the run date
--- and selects rows where:
---   - season_code matches OR season_code = 'all'
---   - current month is inside [effective_month_start, effective_month_end]
---     (year-wrap: month >= start OR month <= end when end < start)
+-- In production, credentials and identifiers must come from secrets rather than
+-- repository-managed defaults.
 -- =============================================================================
 
 BEGIN;
 
--- ---------------------------------------------------------------------------
--- 1. Representative device (Alabama, central location – Montgomery area)
---    Replace this row or ON CONFLICT DO NOTHING if device already exists.
--- ---------------------------------------------------------------------------
+CREATE EXTENSION IF NOT EXISTS pgcrypto;
+
 INSERT INTO device (
     id,
     name,
@@ -51,149 +46,133 @@ VALUES (
 )
 ON CONFLICT (id) DO NOTHING;
 
--- ---------------------------------------------------------------------------
--- 2. SUMMER schedule (May 1 – September 30)
---    Mon / Wed / Fri / Sat  |  05:30  |  25 min
---    Rationale: Peak evapotranspiration; Bermuda in full growth; four-day
---    spacing with Saturday bridge prevents excess soil dry-down.
--- ---------------------------------------------------------------------------
-INSERT INTO baseline_schedule (
-    id, device_id,
-    day_of_week, season_code, effective_month_start, effective_month_end,
-    grass_type, start_time, duration_minutes, is_active, notes,
-    created_at, updated_at
-) VALUES
-    -- Monday
-    (gen_random_uuid(), '00000000-0000-0000-0000-000000000001',
-     0, 'summer', 5, 9,
-     'bermuda', '05:30', 25, true,
-     'Summer Mon – peak evapotranspiration window',
-     now(), now()),
-    -- Wednesday
-    (gen_random_uuid(), '00000000-0000-0000-0000-000000000001',
-     2, 'summer', 5, 9,
-     'bermuda', '05:30', 25, true,
-     'Summer Wed – mid-week cycle',
-     now(), now()),
-    -- Friday
-    (gen_random_uuid(), '00000000-0000-0000-0000-000000000001',
-     4, 'summer', 5, 9,
-     'bermuda', '05:30', 25, true,
-     'Summer Fri – end of workweek cycle',
-     now(), now()),
-    -- Saturday
-    (gen_random_uuid(), '00000000-0000-0000-0000-000000000001',
-     5, 'summer', 5, 9,
-     'bermuda', '05:30', 25, true,
-     'Summer Sat – weekend bridge; prevents 72-h dry gap',
-     now(), now());
-
--- ---------------------------------------------------------------------------
--- 3. SPRING schedule (March 1 – April 30)
---    Mon / Wed / Fri  |  06:00  |  15 min
---    Rationale: Growth resumes; spring rainfall abundant; supplemental only.
---    AI agent expected to reduce/skip frequently due to Alabama spring rains.
--- ---------------------------------------------------------------------------
-INSERT INTO baseline_schedule (
-    id, device_id,
-    day_of_week, season_code, effective_month_start, effective_month_end,
-    grass_type, start_time, duration_minutes, is_active, notes,
-    created_at, updated_at
-) VALUES
-    -- Monday
-    (gen_random_uuid(), '00000000-0000-0000-0000-000000000001',
-     0, 'spring', 3, 4,
-     'bermuda', '06:00', 15, true,
-     'Spring Mon – supplemental; AI will skip on rainy weeks',
-     now(), now()),
-    -- Wednesday
-    (gen_random_uuid(), '00000000-0000-0000-0000-000000000001',
-     2, 'spring', 3, 4,
-     'bermuda', '06:00', 15, true,
-     'Spring Wed',
-     now(), now()),
-    -- Friday
-    (gen_random_uuid(), '00000000-0000-0000-0000-000000000001',
-     4, 'spring', 3, 4,
-     'bermuda', '06:00', 15, true,
-     'Spring Fri',
-     now(), now());
-
--- ---------------------------------------------------------------------------
--- 4. FALL schedule (October 1 – November 30)
---    Mon / Thu  |  06:00  |  15 min
---    Rationale: Bermuda transitioning to dormancy; reduce to two-day cycle.
---    Cooler temps and autumn fronts reduce supplemental irrigation need.
--- ---------------------------------------------------------------------------
-INSERT INTO baseline_schedule (
-    id, device_id,
-    day_of_week, season_code, effective_month_start, effective_month_end,
-    grass_type, start_time, duration_minutes, is_active, notes,
-    created_at, updated_at
-) VALUES
-    -- Monday
-    (gen_random_uuid(), '00000000-0000-0000-0000-000000000001',
-     0, 'fall', 10, 11,
-     'bermuda', '06:00', 15, true,
-     'Fall Mon – reduced schedule; Bermuda slowing growth',
-     now(), now()),
-    -- Thursday
-    (gen_random_uuid(), '00000000-0000-0000-0000-000000000001',
-     3, 'fall', 10, 11,
-     'bermuda', '06:00', 15, true,
-     'Fall Thu',
-     now(), now());
-
--- ---------------------------------------------------------------------------
--- 5. WINTER schedule (December 1 – February 28/29)
---    Mon / Thu  |  06:00  |  10 min
---    Rationale: Bermuda fully dormant. Minimal supplemental irrigation only
---    during extended dry spells (> 2 weeks no rainfall).
---    effective_month_end=2 with effective_month_start=12 signals year-wrap.
--- ---------------------------------------------------------------------------
-INSERT INTO baseline_schedule (
-    id, device_id,
-    day_of_week, season_code, effective_month_start, effective_month_end,
-    grass_type, start_time, duration_minutes, is_active, notes,
-    created_at, updated_at
-) VALUES
-    -- Monday
-    (gen_random_uuid(), '00000000-0000-0000-0000-000000000001',
-     0, 'winter', 12, 2,
-     'bermuda', '06:00', 10, true,
-     'Winter Mon – dormant; AI expected to skip most weeks',
-     now(), now()),
-    -- Thursday
-    (gen_random_uuid(), '00000000-0000-0000-0000-000000000001',
-     3, 'winter', 12, 2,
-     'bermuda', '06:00', 10, true,
-     'Winter Thu – dormant fallback only',
-     now(), now());
+WITH day_window AS (
+    SELECT generate_series(current_date, current_date + 6, interval '1 day')::date AS schedule_date
+),
+season_templates AS (
+    SELECT 'spring'::text AS season_code, 0 AS day_of_week, '06:00'::time AS start_time, 15 AS duration_minutes,
+           'Spring Mon – supplemental; AI may skip on rainy weeks'::text AS notes
+    UNION ALL SELECT 'spring', 2, '06:00'::time, 15, 'Spring Wed'
+    UNION ALL SELECT 'spring', 4, '06:00'::time, 15, 'Spring Fri'
+    UNION ALL SELECT 'summer', 0, '05:30'::time, 25, 'Summer Mon – peak evapotranspiration window'
+    UNION ALL SELECT 'summer', 2, '05:30'::time, 25, 'Summer Wed – mid-week cycle'
+    UNION ALL SELECT 'summer', 4, '05:30'::time, 25, 'Summer Fri – end of workweek cycle'
+    UNION ALL SELECT 'summer', 5, '05:30'::time, 25, 'Summer Sat – weekend bridge; prevents 72-h dry gap'
+    UNION ALL SELECT 'fall', 0, '06:00'::time, 15, 'Fall Mon – reduced schedule; Bermuda slowing growth'
+    UNION ALL SELECT 'fall', 3, '06:00'::time, 15, 'Fall Thu'
+    UNION ALL SELECT 'winter', 0, '06:00'::time, 10, 'Winter Mon – dormant; AI expected to skip most weeks'
+    UNION ALL SELECT 'winter', 3, '06:00'::time, 10, 'Winter Thu – dormant fallback only'
+),
+resolved_schedule AS (
+    SELECT
+        d.schedule_date,
+        'bermuda'::text AS grass_type,
+        t.start_time,
+        t.duration_minutes,
+        t.notes
+    FROM day_window d
+    JOIN season_templates t
+      ON t.day_of_week = EXTRACT(ISODOW FROM d.schedule_date)::int - 1
+     AND t.season_code = CASE
+         WHEN EXTRACT(MONTH FROM d.schedule_date)::int IN (3, 4) THEN 'spring'
+         WHEN EXTRACT(MONTH FROM d.schedule_date)::int BETWEEN 5 AND 9 THEN 'summer'
+         WHEN EXTRACT(MONTH FROM d.schedule_date)::int IN (10, 11) THEN 'fall'
+         ELSE 'winter'
+     END
+),
+inserted_original AS (
+    INSERT INTO original_baseline_schedule (
+        id,
+        device_id,
+        schedule_date,
+        grass_type,
+        start_time,
+        duration_minutes,
+        is_active,
+        notes,
+        source,
+        created_at,
+        updated_at
+    )
+    SELECT
+        gen_random_uuid(),
+        '00000000-0000-0000-0000-000000000001'::uuid,
+        rs.schedule_date,
+        rs.grass_type,
+        rs.start_time,
+        rs.duration_minutes,
+        true,
+        rs.notes,
+        'manual_seed',
+        now(),
+        now()
+    FROM resolved_schedule rs
+    WHERE NOT EXISTS (
+        SELECT 1
+        FROM original_baseline_schedule obs
+        WHERE obs.device_id = '00000000-0000-0000-0000-000000000001'::uuid
+          AND obs.schedule_date = rs.schedule_date
+          AND obs.start_time = rs.start_time
+    )
+    RETURNING id, schedule_date, start_time
+),
+all_original AS (
+    SELECT id, schedule_date, start_time
+    FROM original_baseline_schedule
+    WHERE device_id = '00000000-0000-0000-0000-000000000001'::uuid
+      AND schedule_date BETWEEN current_date AND current_date + 6
+)
+INSERT INTO current_baseline_schedule (
+    id,
+    device_id,
+    original_schedule_id,
+    schedule_date,
+    grass_type,
+    start_time,
+    duration_minutes,
+    is_active,
+    notes,
+    source,
+    superseded_at,
+    created_at,
+    updated_at
+)
+SELECT
+    gen_random_uuid(),
+    '00000000-0000-0000-0000-000000000001'::uuid,
+    ao.id,
+    rs.schedule_date,
+    rs.grass_type,
+    rs.start_time,
+    rs.duration_minutes,
+    true,
+    rs.notes,
+    'manual_seed',
+    NULL,
+    now(),
+    now()
+FROM resolved_schedule rs
+JOIN all_original ao
+  ON ao.schedule_date = rs.schedule_date
+ AND ao.start_time = rs.start_time
+WHERE NOT EXISTS (
+    SELECT 1
+    FROM current_baseline_schedule cbs
+    WHERE cbs.device_id = '00000000-0000-0000-0000-000000000001'::uuid
+      AND cbs.schedule_date = rs.schedule_date
+      AND cbs.start_time = rs.start_time
+      AND cbs.is_active = true
+      AND cbs.superseded_at IS NULL
+);
 
 COMMIT;
 
 -- =============================================================================
--- Verification query – run after seeding to inspect the full schedule matrix
+-- Verification query – run after seeding to inspect the visible week-ahead plan
 -- =============================================================================
--- SELECT
---     season_code,
---     effective_month_start AS month_start,
---     effective_month_end   AS month_end,
---     CASE day_of_week
---         WHEN 0 THEN 'Monday'
---         WHEN 1 THEN 'Tuesday'
---         WHEN 2 THEN 'Wednesday'
---         WHEN 3 THEN 'Thursday'
---         WHEN 4 THEN 'Friday'
---         WHEN 5 THEN 'Saturday'
---         WHEN 6 THEN 'Sunday'
---     END                   AS day_name,
---     start_time,
---     duration_minutes,
---     is_active,
---     notes
--- FROM baseline_schedule
+-- SELECT schedule_date, start_time, duration_minutes, notes, source
+-- FROM current_baseline_schedule
 -- WHERE device_id = '00000000-0000-0000-0000-000000000001'
--- ORDER BY
---     effective_month_start,
---     day_of_week;
+--   AND is_active = true
+--   AND superseded_at IS NULL
+-- ORDER BY schedule_date, start_time;

@@ -1,0 +1,301 @@
+{
+  "id": null,
+  "uid": "aisprinkler-observability",
+  "title": "AISprinkler Observability",
+  "schemaVersion": 39,
+  "version": 2,
+  "refresh": "30s",
+  "tags": ["aisprinkler", "weather", "schedule", "db"],
+  "time": {
+    "from": "now-30d",
+    "to": "now+7d"
+  },
+  "panels": [
+    {
+      "id": 1,
+      "type": "timeseries",
+      "title": "Weather Trends (Past 30d to +7d)",
+      "datasource": {
+        "type": "postgres",
+        "uid": "postgres"
+      },
+      "gridPos": {
+        "h": 12,
+        "w": 24,
+        "x": 0,
+        "y": 0
+      },
+      "targets": [
+        {
+          "refId": "A",
+          "format": "time_series",
+          "rawSql": "SELECT event_time AS \"time\", rain_mm_day AS value, 'historical_rain_mm' AS metric FROM grafana_weather_given_day_v1 WHERE $__timeFilter(event_time) AND is_observed = true UNION ALL SELECT event_time AS \"time\", avg_temperature_c AS value, 'historical_temperature_c' AS metric FROM grafana_weather_given_day_v1 WHERE $__timeFilter(event_time) AND is_observed = true UNION ALL SELECT event_time AS \"time\", avg_humidity_pct AS value, 'historical_humidity_pct' AS metric FROM grafana_weather_given_day_v1 WHERE $__timeFilter(event_time) AND is_observed = true ORDER BY \"time\";"
+        },
+        {
+          "refId": "B",
+          "format": "time_series",
+          "rawSql": "SELECT event_time AS \"time\", rain_mm_day AS value, 'forecast_rain_mm_day' AS metric FROM grafana_weather_next_7d_daily_v1 UNION ALL SELECT event_time AS \"time\", avg_temperature_c AS value, 'forecast_temperature_c' AS metric FROM grafana_weather_next_7d_daily_v1 UNION ALL SELECT event_time AS \"time\", avg_humidity_pct AS value, 'forecast_humidity_pct' AS metric FROM grafana_weather_next_7d_daily_v1 ORDER BY \"time\";"
+        },
+        {
+          "refId": "C",
+          "format": "time_series",
+          "rawSql": "SELECT event_time AS \"time\", rain_mm AS value, 'forecast_rain_mm_hourly' AS metric FROM grafana_weather_next_7d_v1 UNION ALL SELECT event_time AS \"time\", temperature_c AS value, 'forecast_temperature_c' AS metric FROM grafana_weather_next_7d_v1 UNION ALL SELECT event_time AS \"time\", humidity_pct AS value, 'forecast_humidity_pct' AS metric FROM grafana_weather_next_7d_v1 ORDER BY \"time\";"
+        }
+      ],
+      "fieldConfig": {
+        "defaults": {
+          "custom": {
+            "drawStyle": "line",
+            "lineWidth": 2,
+            "fillOpacity": 0
+          }
+        },
+        "overrides": [
+          {
+            "matcher": {
+              "id": "byRegexp",
+              "options": ".*rain.*"
+            },
+            "properties": [
+              {
+                "id": "custom.axisPlacement",
+                "value": "right"
+              },
+              {
+                "id": "min",
+                "value": 0
+              },
+              {
+                "id": "max",
+                "value": 50
+              }
+            ]
+          },
+          {
+            "matcher": {
+              "id": "byName",
+              "options": "historical_temperature_c"
+            },
+            "properties": [
+              {
+                "id": "color",
+                "value": {
+                  "mode": "fixed",
+                  "fixedColor": "yellow"
+                }
+              }
+            ]
+          },
+          {
+            "matcher": {
+              "id": "byName",
+              "options": "historical_humidity_pct"
+            },
+            "properties": [
+              {
+                "id": "color",
+                "value": {
+                  "mode": "fixed",
+                  "fixedColor": "green"
+                }
+              }
+            ]
+          },
+          {
+            "matcher": {
+              "id": "byName",
+              "options": "historical_rain_mm"
+            },
+            "properties": [
+              {
+                "id": "color",
+                "value": {
+                  "mode": "fixed",
+                  "fixedColor": "blue"
+                }
+              }
+            ]
+          },
+          {
+            "matcher": {
+              "id": "byName",
+              "options": "forecast_temperature_c"
+            },
+            "properties": [
+              {
+                "id": "color",
+                "value": {
+                  "mode": "fixed",
+                  "fixedColor": "orange"
+                }
+              }
+            ]
+          },
+          {
+            "matcher": {
+              "id": "byName",
+              "options": "forecast_humidity_pct"
+            },
+            "properties": [
+              {
+                "id": "color",
+                "value": {
+                  "mode": "fixed",
+                  "fixedColor": "green"
+                }
+              }
+            ]
+          },
+          {
+            "matcher": {
+              "id": "byName",
+              "options": "forecast_rain_mm_day"
+            },
+            "properties": [
+              {
+                "id": "color",
+                "value": {
+                  "mode": "fixed",
+                  "fixedColor": "blue"
+                }
+              }
+            ]
+          },
+          {
+            "matcher": {
+              "id": "byName",
+              "options": "forecast_rain_mm_hourly"
+            },
+            "properties": [
+              {
+                "id": "color",
+                "value": {
+                  "mode": "fixed",
+                  "fixedColor": "blue"
+                }
+              }
+            ]
+          }
+        ]
+      },
+      "options": {
+        "legend": {
+          "calcs": [],
+          "displayMode": "table",
+          "placement": "bottom",
+          "showLegend": true
+        },
+        "tooltip": {
+          "mode": "multi",
+          "sort": "none"
+        }
+      }
+    },
+    {
+      "id": 2,
+      "type": "barchart",
+      "title": "Original vs Current Schedule Duration",
+      "datasource": {
+        "type": "postgres",
+        "uid": "postgres"
+      },
+      "gridPos": {
+        "h": 8,
+        "w": 24,
+        "x": 0,
+        "y": 12
+      },
+      "targets": [
+        {
+          "refId": "D",
+          "format": "time_series",
+          "rawSql": "WITH days AS ( SELECT generate_series(date_trunc('day', $__timeFrom()::timestamp), date_trunc('day', $__timeTo()::timestamp), interval '1 day')::date AS day ), original_daily AS ( SELECT schedule_date AS day, sum(duration_minutes)::int AS original_duration_minutes FROM original_baseline_schedule WHERE schedule_date BETWEEN $__timeFrom()::date AND $__timeTo()::date GROUP BY schedule_date ), current_daily AS ( SELECT schedule_date AS day, sum(CASE WHEN is_active = true AND superseded_at IS NULL THEN duration_minutes ELSE 0 END)::int AS current_duration_minutes FROM current_baseline_schedule WHERE schedule_date BETWEEN $__timeFrom()::date AND $__timeTo()::date GROUP BY schedule_date ) SELECT days.day::timestamp AS \"time\", coalesce(original_daily.original_duration_minutes, 0) AS original_duration_minutes, coalesce(current_daily.current_duration_minutes, 0) AS current_duration_minutes FROM days LEFT JOIN original_daily ON original_daily.day = days.day LEFT JOIN current_daily ON current_daily.day = days.day ORDER BY days.day;"
+        }
+      ],
+      "fieldConfig": {
+        "defaults": {
+          "min": 0,
+          "max": 60,
+          "custom": {
+            "lineWidth": 1,
+            "fillOpacity": 80
+          }
+        },
+        "overrides": [
+          {
+            "matcher": {
+              "id": "byName",
+              "options": "original_duration_minutes"
+            },
+            "properties": [
+              {
+                "id": "color",
+                "value": {
+                  "mode": "fixed",
+                  "fixedColor": "green"
+                }
+              }
+            ]
+          },
+          {
+            "matcher": {
+              "id": "byName",
+              "options": "current_duration_minutes"
+            },
+            "properties": [
+              {
+                "id": "color",
+                "value": {
+                  "mode": "fixed",
+                  "fixedColor": "yellow"
+                }
+              }
+            ]
+          }
+        ]
+      },
+      "options": {
+        "orientation": "auto",
+        "stacking": "none",
+        "showValue": "always",
+        "legend": {
+          "displayMode": "table",
+          "placement": "bottom",
+          "showLegend": true
+        },
+        "tooltip": {
+          "mode": "multi",
+          "sort": "none"
+        }
+      }
+    },
+    {
+      "id": 3,
+      "type": "table",
+      "title": "LLM Prompt Exchange (Sent vs Received)",
+      "datasource": {
+        "type": "postgres",
+        "uid": "postgres"
+      },
+      "gridPos": {
+        "h": 10,
+        "w": 24,
+        "x": 0,
+        "y": 20
+      },
+      "targets": [
+        {
+          "refId": "E",
+          "format": "table",
+          "rawSql": "SELECT e.created_at AS event_time, e.correlation_id, e.model_name, e.prompt_version, e.policy_version, LEFT(e.prompt_text, 2500) AS sent_prompt, LEFT(e.response_text, 2500) AS received_response FROM agent_prompt_exchange e WHERE $__timeFilter(e.created_at) ORDER BY e.created_at DESC LIMIT 200;"
+        }
+      ],
+      "options": {
+        "showHeader": true,
+        "footer": {
+          "show": false
+        }
+      }
+    }
+  ]
+}

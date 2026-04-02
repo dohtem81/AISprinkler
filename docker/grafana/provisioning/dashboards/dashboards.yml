@@ -1,0 +1,12 @@
+apiVersion: 1
+
+providers:
+  - name: AISprinkler Dashboards
+    orgId: 1
+    folder: AISprinkler
+    type: file
+    disableDeletion: false
+    editable: true
+    updateIntervalSeconds: 10
+    options:
+      path: /var/lib/grafana/dashboards

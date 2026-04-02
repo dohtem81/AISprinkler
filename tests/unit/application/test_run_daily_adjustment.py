@@ -15,6 +15,7 @@ import pytest
 from aisprinkler.application.dtos.adjustment_dtos import DailyAdjustmentRequest
 from aisprinkler.application.use_cases.run_daily_adjustment import RunDailyAdjustmentUseCase
 from aisprinkler.domain.entities.adjustment_run import RunState
+from aisprinkler.domain.value_objects.agent_decision_trace import AgentDecisionTrace
 from aisprinkler.domain.services.rule_engine import RuleEngine
 from aisprinkler.domain.value_objects.recommendation import (
     Recommendation,
@@ -63,6 +64,9 @@ class TestAutoApplyPath:
         assert result.final_state == RunState.CLOSED
         assert result.auto_applied is True
         assert result.manual_review_required is False
+        mock_schedule_repo.save.assert_called_once()  # type: ignore[attr-defined]
+        mock_schedule_repo.deactivate.assert_not_called()  # type: ignore[attr-defined]
+        mock_run_repo.save_agent_trace.assert_called_once()  # type: ignore[attr-defined]
 
     async def test_dispatcher_called_once_on_auto_apply(
         self,
@@ -94,7 +98,11 @@ class TestManualReviewPath:
         run_date: date,
     ) -> None:
         agent_port = AsyncMock()
-        agent_port.recommend.return_value = low_confidence_recommendation
+        agent_port.recommend.return_value = AgentDecisionTrace(
+            recommendation=low_confidence_recommendation,
+            prompt_text="low-confidence prompt",
+            response_text="low-confidence response",
+        )
 
         uc = _build_use_case(
             mock_schedule_repo, mock_run_repo, mock_weather_port,
@@ -106,6 +114,8 @@ class TestManualReviewPath:
         assert result.manual_review_required is True
         assert result.auto_applied is False
         mock_executor_port.dispatch.assert_not_called()  # type: ignore[attr-defined]
+        mock_schedule_repo.save.assert_not_called()  # type: ignore[attr-defined]
+        mock_schedule_repo.deactivate.assert_not_called()  # type: ignore[attr-defined]
 
     async def test_maintenance_blackout_routes_to_auto_apply_skip(
         self,
@@ -119,7 +129,11 @@ class TestManualReviewPath:
     ) -> None:
         """Maintenance blackout forces skip action but still auto-applies (rule overrides)."""
         agent_port = AsyncMock()
-        agent_port.recommend.return_value = high_confidence_keep_recommendation
+        agent_port.recommend.return_value = AgentDecisionTrace(
+            recommendation=high_confidence_keep_recommendation,
+            prompt_text="keep prompt",
+            response_text="keep response",
+        )
 
         uc = _build_use_case(
             mock_schedule_repo, mock_run_repo, mock_weather_port,
@@ -134,6 +148,8 @@ class TestManualReviewPath:
         assert result.final_action == RecommendationAction.SKIP
         assert result.auto_applied is True
         assert "maintenance_blackout" in result.rules_applied
+        mock_schedule_repo.save.assert_not_called()  # type: ignore[attr-defined]
+        mock_schedule_repo.deactivate.assert_called_once()  # type: ignore[attr-defined]
 
 
 class TestFailurePath:

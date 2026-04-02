@@ -2,16 +2,18 @@
 
 from __future__ import annotations
 
-from datetime import date
+from datetime import date, datetime, timezone
 from uuid import UUID
 
-from sqlalchemy import and_, or_, select
+from sqlalchemy import select
 from sqlalchemy.ext.asyncio import AsyncSession
 
-from aisprinkler.domain.entities.baseline_schedule import BaselineSchedule
+from aisprinkler.domain.entities.baseline_schedule import BaselineKind, BaselineSchedule
 from aisprinkler.domain.repositories.schedule_repository import ScheduleRepository
-from aisprinkler.domain.value_objects.season import SeasonCode
-from aisprinkler.infrastructure.persistence.models import BaselineScheduleModel
+from aisprinkler.infrastructure.persistence.models import (
+    CurrentBaselineScheduleModel,
+    OriginalBaselineScheduleModel,
+)
 
 
 class SqlAlchemyScheduleRepository(ScheduleRepository):
@@ -21,96 +23,185 @@ class SqlAlchemyScheduleRepository(ScheduleRepository):
     async def get_active_for_date(
         self, device_id: UUID, run_date: date
     ) -> list[BaselineSchedule]:
-        weekday = run_date.weekday()  # 0=Monday … 6=Sunday
-        month = run_date.month
-        season = SeasonCode.from_month(month)
-
-        # Season matches rows where season_code = 'all' OR season_code matches
-        # AND the month falls inside [effective_month_start, effective_month_end]
-        # (with year-wrap support)
         stmt = (
-            select(BaselineScheduleModel)
+            select(CurrentBaselineScheduleModel)
             .where(
-                and_(
-                    BaselineScheduleModel.device_id == device_id,
-                    BaselineScheduleModel.day_of_week == weekday,
-                    BaselineScheduleModel.is_active.is_(True),
-                    or_(
-                        BaselineScheduleModel.season_code == "all",
-                        and_(
-                            BaselineScheduleModel.season_code == season.value,
-                            # Normal range (no year wrap)
-                            or_(
-                                and_(
-                                    BaselineScheduleModel.effective_month_start <= month,
-                                    BaselineScheduleModel.effective_month_end >= month,
-                                    BaselineScheduleModel.effective_month_end
-                                    >= BaselineScheduleModel.effective_month_start,
-                                ),
-                                # Year-wrap range (e.g. winter: 12 → 2)
-                                and_(
-                                    BaselineScheduleModel.effective_month_end
-                                    < BaselineScheduleModel.effective_month_start,
-                                    or_(
-                                        BaselineScheduleModel.effective_month_start <= month,
-                                        BaselineScheduleModel.effective_month_end >= month,
-                                    ),
-                                ),
-                            ),
-                        ),
-                    ),
-                )
+                CurrentBaselineScheduleModel.device_id == device_id,
+                CurrentBaselineScheduleModel.schedule_date == run_date,
+                CurrentBaselineScheduleModel.is_active.is_(True),
+                CurrentBaselineScheduleModel.superseded_at.is_(None),
             )
+            .order_by(CurrentBaselineScheduleModel.start_time.asc())
         )
         result = await self._session.execute(stmt)
         rows = result.scalars().all()
-        return [self._to_entity(r) for r in rows]
+        return [self._to_current_entity(r) for r in rows]
 
     async def save(self, schedule: BaselineSchedule) -> None:
-        model = self._to_model(schedule)
+        if schedule.baseline_kind is BaselineKind.CURRENT:
+            await self._supersede_visible_current(schedule)
+            model = self._to_current_model(schedule)
+        else:
+            model = self._to_original_model(schedule)
         self._session.add(model)
         await self._session.flush()
 
     async def deactivate(self, schedule_id: UUID) -> None:
-        result = await self._session.get(BaselineScheduleModel, schedule_id)
-        if result:
+        result = await self._session.get(CurrentBaselineScheduleModel, schedule_id)
+        if result is not None:
             result.is_active = False
+            result.superseded_at = datetime.now(timezone.utc)
             await self._session.flush()
+            return
+
+        original = await self._session.get(OriginalBaselineScheduleModel, schedule_id)
+        if original is not None:
+            original.is_active = False
+            await self._session.flush()
+
+    async def list_for_range(
+        self,
+        device_id: UUID,
+        start_date: date,
+        end_date: date,
+        *,
+        baseline_kind: BaselineKind | None = None,
+        include_history: bool = False,
+    ) -> list[BaselineSchedule]:
+        rows: list[BaselineSchedule] = []
+        if baseline_kind in (None, BaselineKind.ORIGINAL):
+            original_stmt = (
+                select(OriginalBaselineScheduleModel)
+                .where(
+                    OriginalBaselineScheduleModel.device_id == device_id,
+                    OriginalBaselineScheduleModel.schedule_date >= start_date,
+                    OriginalBaselineScheduleModel.schedule_date <= end_date,
+                )
+                .order_by(
+                    OriginalBaselineScheduleModel.schedule_date.asc(),
+                    OriginalBaselineScheduleModel.start_time.asc(),
+                )
+            )
+            if not include_history:
+                original_stmt = original_stmt.where(OriginalBaselineScheduleModel.is_active.is_(True))
+            rows.extend(
+                self._to_original_entity(row)
+                for row in (await self._session.execute(original_stmt)).scalars().all()
+            )
+
+        if baseline_kind in (None, BaselineKind.CURRENT):
+            current_stmt = (
+                select(CurrentBaselineScheduleModel)
+                .where(
+                    CurrentBaselineScheduleModel.device_id == device_id,
+                    CurrentBaselineScheduleModel.schedule_date >= start_date,
+                    CurrentBaselineScheduleModel.schedule_date <= end_date,
+                )
+                .order_by(
+                    CurrentBaselineScheduleModel.schedule_date.asc(),
+                    CurrentBaselineScheduleModel.start_time.asc(),
+                    CurrentBaselineScheduleModel.created_at.asc(),
+                )
+            )
+            if not include_history:
+                current_stmt = current_stmt.where(
+                    CurrentBaselineScheduleModel.is_active.is_(True),
+                    CurrentBaselineScheduleModel.superseded_at.is_(None),
+                )
+            rows.extend(
+                self._to_current_entity(row)
+                for row in (await self._session.execute(current_stmt)).scalars().all()
+            )
+
+        return sorted(rows, key=lambda item: (item.schedule_date, item.start_time, item.created_at))
+
+    async def _supersede_visible_current(self, schedule: BaselineSchedule) -> None:
+        stmt = select(CurrentBaselineScheduleModel).where(
+            CurrentBaselineScheduleModel.device_id == schedule.device_id,
+            CurrentBaselineScheduleModel.schedule_date == schedule.schedule_date,
+            CurrentBaselineScheduleModel.start_time == schedule.start_time,
+            CurrentBaselineScheduleModel.is_active.is_(True),
+            CurrentBaselineScheduleModel.superseded_at.is_(None),
+        )
+        rows = (await self._session.execute(stmt)).scalars().all()
+        if not rows:
+            return
+
+        now = datetime.now(timezone.utc)
+        for row in rows:
+            row.is_active = False
+            row.superseded_at = now
+            row.updated_at = now
+        await self._session.flush()
 
     # ── Mapping helpers ────────────────────────────────────────────────────────
 
     @staticmethod
-    def _to_entity(m: BaselineScheduleModel) -> BaselineSchedule:
+    def _to_original_entity(m: OriginalBaselineScheduleModel) -> BaselineSchedule:
         return BaselineSchedule(
             id=m.id,
             device_id=m.device_id,
-            day_of_week=m.day_of_week,
-            season_code=SeasonCode(m.season_code),
-            effective_month_start=m.effective_month_start,
-            effective_month_end=m.effective_month_end,
+            schedule_date=m.schedule_date,
             start_time=m.start_time,
             duration_minutes=m.duration_minutes,
+            baseline_kind=BaselineKind.ORIGINAL,
             is_active=m.is_active,
             grass_type=m.grass_type,
             notes=m.notes,
+            source=m.source,
             created_at=m.created_at,
             updated_at=m.updated_at,
         )
 
     @staticmethod
-    def _to_model(e: BaselineSchedule) -> BaselineScheduleModel:
-        return BaselineScheduleModel(
+    def _to_current_entity(m: CurrentBaselineScheduleModel) -> BaselineSchedule:
+        return BaselineSchedule(
+            id=m.id,
+            device_id=m.device_id,
+            schedule_date=m.schedule_date,
+            start_time=m.start_time,
+            duration_minutes=m.duration_minutes,
+            baseline_kind=BaselineKind.CURRENT,
+            is_active=m.is_active,
+            grass_type=m.grass_type,
+            notes=m.notes,
+            source=m.source,
+            original_schedule_id=m.original_schedule_id,
+            superseded_at=m.superseded_at,
+            created_at=m.created_at,
+            updated_at=m.updated_at,
+        )
+
+    @staticmethod
+    def _to_original_model(e: BaselineSchedule) -> OriginalBaselineScheduleModel:
+        return OriginalBaselineScheduleModel(
             id=e.id,
             device_id=e.device_id,
-            day_of_week=e.day_of_week,
-            season_code=e.season_code.value,
-            effective_month_start=e.effective_month_start,
-            effective_month_end=e.effective_month_end,
+            schedule_date=e.schedule_date,
             start_time=e.start_time,
             duration_minutes=e.duration_minutes,
             is_active=e.is_active,
             grass_type=e.grass_type,
             notes=e.notes,
+            source=e.source,
+            created_at=e.created_at,
+            updated_at=e.updated_at,
+        )
+
+    @staticmethod
+    def _to_current_model(e: BaselineSchedule) -> CurrentBaselineScheduleModel:
+        return CurrentBaselineScheduleModel(
+            id=e.id,
+            device_id=e.device_id,
+            original_schedule_id=e.original_schedule_id,
+            schedule_date=e.schedule_date,
+            start_time=e.start_time,
+            duration_minutes=e.duration_minutes,
+            is_active=e.is_active,
+            grass_type=e.grass_type,
+            notes=e.notes,
+            source=e.source,
+            superseded_at=e.superseded_at,
             created_at=e.created_at,
             updated_at=e.updated_at,
         )

@@ -52,6 +52,11 @@ Agent must not exceed policy bounds.
 - Tool usage prompt: how and when tools can be called
 - Output schema prompt: exact JSON contract
 
+Runtime note:
+
+- Prompt/rule text is loaded from `config/SPRINKLER_LLM_RULES.md`.
+- Runtime includes a post-parse guard to coerce obviously invalid or copied-example style outputs into safe, policy-consistent recommendations.
+
 ## 7. Tool Contract (Design)
 
 Minimum tools:

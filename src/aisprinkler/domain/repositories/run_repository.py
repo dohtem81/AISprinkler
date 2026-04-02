@@ -7,6 +7,7 @@ from datetime import date
 from uuid import UUID
 
 from aisprinkler.domain.entities.adjustment_run import AdjustmentRun, RunState
+from aisprinkler.domain.value_objects.agent_decision_trace import AgentDecisionTrace
 
 
 class RunRepository(ABC):
@@ -26,3 +27,14 @@ class RunRepository(ABC):
 
     @abstractmethod
     async def list_pending_reviews(self) -> list[AdjustmentRun]: ...
+
+    @abstractmethod
+    async def save_agent_trace(
+        self,
+        run_id: UUID,
+        correlation_id: UUID,
+        trace: AgentDecisionTrace,
+        *,
+        prompt_version: str,
+        policy_version: str,
+    ) -> None: ...

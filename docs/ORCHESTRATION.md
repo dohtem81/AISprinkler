@@ -10,6 +10,10 @@ Define trigger cadence, state transitions, retries, and execution contract for s
 
 Primary run at local 06:00 daily.
 
+Operational note:
+
+- A recurring 6-hour trigger cadence is planned but not yet implemented.
+
 Trigger id format:
 
 - daily:<device_id>:<yyyy-mm-dd>
@@ -48,6 +52,7 @@ State rules:
 1. Create run and correlation id.
 2. Load active baseline schedule for run date.
 3. Pull weather observations for last 24h and forecast for next 24h.
+	- Weather persistence stores hourly forecast horizon for next 7 days; decision features are derived from that data.
 4. Invoke agent with normalized payload.
 5. Apply deterministic rules.
 6. Evaluate confidence gate.
@@ -119,6 +124,8 @@ Planned entry points:
 - scripts/trigger_daily_adjustment.py
 - scripts/retry_failed_run.py
 - scripts/process_manual_reviews.py
+- scripts/create_baseline_last30d.py
+- scripts/adjust_schedule_last30d.py
 
 Each script must:
 

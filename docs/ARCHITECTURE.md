@@ -2,7 +2,7 @@
 
 ## 1. Purpose
 
-Define component boundaries and data flow for a design-first AISprinkler system that adjusts the next 24-hour irrigation schedule from weather context while keeping deterministic safety controls.
+Define component boundaries and data flow for AISprinkler, which adjusts daily irrigation duration using weather context while keeping deterministic safety controls.
 
 ## 2. v1 Scope Boundary
 
@@ -10,7 +10,7 @@ Included:
 
 - Single irrigation device
 - Daily baseline schedule persistence
-- AI recommendation for next 24-hour adjustment
+- AI recommendation for next-run adjustment using recent observed weather and forecast context
 - Deterministic rules and confidence gate
 - Trigger and execution contract
 - Full traceability
@@ -29,6 +29,7 @@ Excluded:
 Responsibilities:
 
 - Trigger daily run and optional event-driven reevaluation
+- Trigger operational refresh runs and support replay/manual triggers
 - Manage run state transitions
 - Execute idempotent orchestration steps
 - Handle retries, fallback, and escalation
@@ -41,6 +42,7 @@ Responsibilities:
 - Fallback to secondary provider on failure or stale data
 - Normalize observations and forecasts
 - Persist snapshot used for decision
+- Refresh future forecast horizon (next 7 days) on each pull for consistent observability
 
 ### 3.3 AI Decision Agent
 
@@ -49,8 +51,11 @@ Responsibilities:
 - Consume baseline schedule + normalized weather + policy context
 - Produce structured recommendation with rationale and confidence
 - Stay inside deterministic bounds defined in policy
+- Avoid example-copy behavior through explicit prompt constraints and output validation/coercion
 
 Implementation: `LangChainAgentAdapter` (`infrastructure/agent/langchain_agent.py`).
+
+Prompt/rules source: `config/SPRINKLER_LLM_RULES.md`.
 
 LLM provider is **runtime-configurable** via the `LLM_PROVIDER` environment variable:
 

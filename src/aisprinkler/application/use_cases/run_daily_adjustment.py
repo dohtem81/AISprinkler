@@ -10,6 +10,7 @@ from __future__ import annotations
 
 import logging
 from datetime import datetime, timezone
+from datetime import time as wall_time
 from uuid import UUID
 
 from aisprinkler.application.dtos.adjustment_dtos import (
@@ -20,6 +21,7 @@ from aisprinkler.application.ports.agent_port import AgentPort
 from aisprinkler.application.ports.executor_port import ExecutionCommand, ExecutorPort
 from aisprinkler.application.ports.weather_port import WeatherPort
 from aisprinkler.domain.entities.adjustment_run import AdjustmentRun, RunState, TriggerType
+from aisprinkler.domain.entities.baseline_schedule import BaselineKind, BaselineSchedule
 from aisprinkler.domain.repositories.run_repository import RunRepository
 from aisprinkler.domain.repositories.schedule_repository import ScheduleRepository
 from aisprinkler.domain.services.rule_engine import RuleEngine
@@ -94,13 +96,21 @@ class RunDailyAdjustmentUseCase:
                 policy_version=self._policy_version,
                 prompt_version=self._prompt_version,
             )
+            await self._run_repo.save_agent_trace(
+                run.id,
+                run.correlation_id,
+                recommendation,
+                prompt_version=self._prompt_version,
+                policy_version=self._policy_version,
+            )
+            agent_recommendation = recommendation.recommendation
 
             # ── 4. Deterministic rule check ───────────────────────────────────
             run.transition_to(RunState.RULE_CHECK)
             await self._run_repo.update_state(run.id, RunState.RULE_CHECK)
 
             rule_result = self._rule_engine.apply(
-                recommendation=recommendation,
+                recommendation=agent_recommendation,
                 baseline_duration_minutes=baseline_duration,
                 weather=weather,
                 maintenance_blackout=request.maintenance_blackout,
@@ -117,7 +127,7 @@ class RunDailyAdjustmentUseCase:
             policy_mismatch = any(
                 e.rule_id == "policy_mismatch_manual_review" for e in rule_result.effects
             )
-            below_threshold = recommendation.confidence_score < self._confidence_threshold
+            below_threshold = agent_recommendation.confidence_score < self._confidence_threshold
 
             if policy_mismatch or below_threshold:
                 run.send_to_manual_review()
@@ -131,9 +141,34 @@ class RunDailyAdjustmentUseCase:
                     auto_applied=False,
                     manual_review_required=True,
                     rules_applied=rules_applied,
-                    confidence_score=recommendation.confidence_score,
-                    rationale=recommendation.rationale,
+                    confidence_score=agent_recommendation.confidence_score,
+                    rationale=agent_recommendation.rationale,
                 )
+
+            # Persist corrected schedule state before dispatching command.
+            if rule_result.final_action == RecommendationAction.SKIP:
+                for schedule in schedules:
+                    await self._schedule_repo.deactivate(schedule.id)
+            else:
+                target_duration = rule_result.final_duration_minutes
+                if target_duration is not None and target_duration > 0:
+                    source_slot = schedules[0] if schedules else None
+                    corrected_schedule = BaselineSchedule(
+                        device_id=request.device_id,
+                        schedule_date=request.run_date,
+                        start_time=(
+                            source_slot.start_time if source_slot is not None else wall_time(6, 0)
+                        ),
+                        duration_minutes=target_duration,
+                        baseline_kind=BaselineKind.CURRENT,
+                        original_schedule_id=(
+                            source_slot.original_schedule_id if source_slot is not None else None
+                        ),
+                        grass_type=source_slot.grass_type if source_slot is not None else None,
+                        notes=f"Auto-adjusted by run {run.id}",
+                        source="auto_adjustment",
+                    )
+                    await self._schedule_repo.save(corrected_schedule)
 
             # ── 6. Auto-apply dispatch ────────────────────────────────────────
             run.transition_to(RunState.DISPATCHING)
@@ -165,8 +200,8 @@ class RunDailyAdjustmentUseCase:
                 auto_applied=True,
                 manual_review_required=False,
                 rules_applied=rules_applied,
-                confidence_score=recommendation.confidence_score,
-                rationale=recommendation.rationale,
+                confidence_score=agent_recommendation.confidence_score,
+                rationale=agent_recommendation.rationale,
             )
 
         except Exception:

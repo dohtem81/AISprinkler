@@ -6,7 +6,7 @@ from abc import ABC, abstractmethod
 from datetime import date
 from uuid import UUID
 
-from aisprinkler.domain.entities.baseline_schedule import BaselineSchedule
+from aisprinkler.domain.entities.baseline_schedule import BaselineKind, BaselineSchedule
 
 
 class ScheduleRepository(ABC):
@@ -14,7 +14,7 @@ class ScheduleRepository(ABC):
     async def get_active_for_date(
         self, device_id: UUID, run_date: date
     ) -> list[BaselineSchedule]:
-        """Return all active baseline rows that apply for the given date's weekday and season."""
+        """Return current active baseline rows for a specific calendar date."""
         ...
 
     @abstractmethod
@@ -22,3 +22,14 @@ class ScheduleRepository(ABC):
 
     @abstractmethod
     async def deactivate(self, schedule_id: UUID) -> None: ...
+
+    @abstractmethod
+    async def list_for_range(
+        self,
+        device_id: UUID,
+        start_date: date,
+        end_date: date,
+        *,
+        baseline_kind: BaselineKind | None = None,
+        include_history: bool = False,
+    ) -> list[BaselineSchedule]: ...

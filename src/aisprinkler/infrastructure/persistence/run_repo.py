@@ -2,6 +2,7 @@
 
 from __future__ import annotations
 
+from datetime import datetime, timezone
 from datetime import date
 from uuid import UUID
 
@@ -10,7 +11,8 @@ from sqlalchemy.ext.asyncio import AsyncSession
 
 from aisprinkler.domain.entities.adjustment_run import AdjustmentRun, RunState, TriggerType
 from aisprinkler.domain.repositories.run_repository import RunRepository
-from aisprinkler.infrastructure.persistence.models import AdjustmentRunModel
+from aisprinkler.domain.value_objects.agent_decision_trace import AgentDecisionTrace
+from aisprinkler.infrastructure.persistence.models import AdjustmentRunModel, AgentPromptExchangeModel
 
 
 class SqlAlchemyRunRepository(RunRepository):
@@ -62,6 +64,31 @@ class SqlAlchemyRunRepository(RunRepository):
         )
         result = await self._session.execute(stmt)
         return [self._to_entity(r) for r in result.scalars().all()]
+
+    async def save_agent_trace(
+        self,
+        run_id: UUID,
+        correlation_id: UUID,
+        trace: AgentDecisionTrace,
+        *,
+        prompt_version: str,
+        policy_version: str,
+    ) -> None:
+        model = AgentPromptExchangeModel(
+            run_id=run_id,
+            correlation_id=correlation_id,
+            model_name=trace.recommendation.model_name or "unknown",
+            model_version=trace.recommendation.model_version,
+            prompt_version=prompt_version,
+            policy_version=policy_version,
+            prompt_text=trace.prompt_text,
+            response_text=trace.response_text,
+            request_payload=trace.request_payload,
+            response_payload=trace.response_payload,
+            created_at=datetime.now(timezone.utc),
+        )
+        self._session.add(model)
+        await self._session.flush()
 
     @staticmethod
     def _to_entity(m: AdjustmentRunModel) -> AdjustmentRun:

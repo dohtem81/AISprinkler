@@ -30,6 +30,7 @@ For each run, persist:
 - raw model output
 - normalized parsed output
 - confidence score and rationale
+- persisted prompt/response exchange (exact sent prompt + received response)
 
 3. Rule Evaluation Log
 - rule id, matched state, and effect
@@ -98,3 +99,4 @@ Required operational queries:
 - fetch full artifact chain by correlation id
 - compare recommendation vs final action deltas
 - identify runs using fallback providers
+- inspect sent prompt text and received model response by correlation id and timestamp

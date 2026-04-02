@@ -1,0 +1,56 @@
+{
+  "title": "AISprinkler Schedule + Decisions",
+  "schemaVersion": 39,
+  "version": 1,
+  "refresh": "30s",
+  "tags": ["aisprinkler", "sprinkler"],
+  "panels": [
+    {
+      "type": "state-timeline",
+      "title": "Current Schedule Timeline",
+      "datasource": {
+        "type": "postgres",
+        "uid": "${POSTGRES_DS_UID}"
+      },
+      "gridPos": {"h": 10, "w": 16, "x": 0, "y": 0},
+      "targets": [
+        {
+          "refId": "A",
+          "format": "table",
+          "rawSql": "SELECT schedule_start_local AS \"time\", schedule_end_local AS time_end, device_name AS metric, state FROM grafana_schedule_timeline_v1 WHERE $__timeFilter(schedule_start_local) ORDER BY schedule_start_local;"
+        }
+      ]
+    },
+    {
+      "type": "table",
+      "title": "LLM Prompt Exchange (Sent vs Received)",
+      "datasource": {
+        "type": "postgres",
+        "uid": "${POSTGRES_DS_UID}"
+      },
+      "gridPos": {"h": 10, "w": 8, "x": 16, "y": 0},
+      "targets": [
+        {
+          "refId": "B",
+          "format": "table",
+          "rawSql": "SELECT created_at AS event_time, correlation_id, model_name, prompt_version, policy_version, LEFT(prompt_text, 2500) AS sent_prompt, LEFT(response_text, 2500) AS received_response FROM agent_prompt_exchange WHERE $__timeFilter(created_at) ORDER BY created_at DESC LIMIT 200;"
+        }
+      ]
+    },
+    {
+      "type": "logs",
+      "title": "System Logs (Loki)",
+      "datasource": {
+        "type": "loki",
+        "uid": "${LOKI_DS_UID}"
+      },
+      "gridPos": {"h": 10, "w": 24, "x": 0, "y": 10},
+      "targets": [
+        {
+          "refId": "C",
+          "expr": "{app=\"aisprinkler\"} | json | action=~\"weather_pull|weather_context_build|llm_call|llm_decision\""
+        }
+      ]
+    }
+  ]
+}

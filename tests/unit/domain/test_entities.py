@@ -5,7 +5,7 @@ from __future__ import annotations
 import pytest
 
 from aisprinkler.domain.entities.adjustment_run import AdjustmentRun, RunState, TriggerType
-from aisprinkler.domain.entities.baseline_schedule import BaselineSchedule
+from aisprinkler.domain.entities.baseline_schedule import BaselineKind, BaselineSchedule
 from aisprinkler.domain.value_objects.recommendation import Recommendation, RecommendationAction
 from aisprinkler.domain.value_objects.season import SeasonCode
 from aisprinkler.domain.value_objects.weather_context import WeatherContext
@@ -30,55 +30,27 @@ class TestSeasonCode:
 # ── BaselineSchedule ──────────────────────────────────────────────────────────
 
 class TestBaselineSchedule:
-    def _make(self, month_start: int, month_end: int) -> BaselineSchedule:
+    def _make(self) -> BaselineSchedule:
         return BaselineSchedule(
             device_id=uuid.uuid4(),
-            day_of_week=0,
-            season_code=SeasonCode.SUMMER,
-            effective_month_start=month_start,
-            effective_month_end=month_end,
+            schedule_date=date(2026, 7, 6),
             start_time=time(5, 30),
             duration_minutes=25,
+            baseline_kind=BaselineKind.CURRENT,
         )
 
-    def test_normal_range_covers(self) -> None:
-        s = self._make(5, 9)
-        assert s.covers_month(5) is True
-        assert s.covers_month(7) is True
-        assert s.covers_month(9) is True
-        assert s.covers_month(4) is False
-        assert s.covers_month(10) is False
-
-    def test_year_wrap_detected(self) -> None:
-        s = self._make(12, 2)  # winter
-        assert s.is_year_wrap() is True
-        assert s.covers_month(12) is True
-        assert s.covers_month(1) is True
-        assert s.covers_month(2) is True
-        assert s.covers_month(3) is False
-
-    def test_invalid_day_of_week_raises(self) -> None:
-        with pytest.raises(ValueError):
-            BaselineSchedule(
-                device_id=uuid.uuid4(),
-                day_of_week=7,
-                season_code=SeasonCode.SUMMER,
-                effective_month_start=5,
-                effective_month_end=9,
-                start_time=time(5, 30),
-                duration_minutes=25,
-            )
+    def test_visible_when_active_and_not_superseded(self) -> None:
+        s = self._make()
+        assert s.is_visible() is True
 
     def test_zero_duration_raises(self) -> None:
         with pytest.raises(ValueError):
             BaselineSchedule(
                 device_id=uuid.uuid4(),
-                day_of_week=0,
-                season_code=SeasonCode.SUMMER,
-                effective_month_start=5,
-                effective_month_end=9,
+                schedule_date=date(2026, 7, 6),
                 start_time=time(5, 30),
                 duration_minutes=0,
+                baseline_kind=BaselineKind.ORIGINAL,
             )
 
 
