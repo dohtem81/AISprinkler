@@ -1,12 +1,6 @@
 # AISprinkler
 
-> **⚠ Work in Progress — Concept Only**
->
-> This project is in active development and has **not been system-tested**.
-> No end-to-end or hardware validation has been performed.
-> All design decisions, flows, and configurations described here are
-> architectural concepts and are subject to change.
-> Do not use in production.
+![AISprinkler dashboard screenshot](docs/images/Screenshot%202026-04-02%20023637.png)
 
 This repository contains AISprinkler documentation and implementation code for
 weather-aware sprinkler schedule adjustments with full run traceability.
