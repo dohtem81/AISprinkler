@@ -100,6 +100,9 @@ AISprinkler starts from a daily preset irrigation schedule stored in a database,
 	sent/received prompt exchange visibility.
 - Historical support scripts exist for baseline backfill and replay:
 	`scripts/create_baseline_last30d.py` and `scripts/adjust_schedule_last30d.py`.
+- Runtime defaults remain safety-first: `AGENT_MODE=heuristic` and no-op execution adapter for dispatch.
+- Weather runtime default is Open-Meteo; synthetic weather can be selected by config.
+- Automatic weather-provider fallback chaining and run/manual-review API endpoints are still in progress.
 
 ## LLM Provider Configuration
 

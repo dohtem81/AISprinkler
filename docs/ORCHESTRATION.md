@@ -26,6 +26,31 @@ Trigger id format:
 
 - event:<device_id>:<event_type>:<timestamp>
 
+Current implementation status:
+
+- Daily trigger path is implemented via Celery task.
+- Event-triggered reevaluation is planned but not implemented in runtime workflow.
+
+### 2.3 Real-Time vs Batch Event Flow
+
+Real-time control loop (minutes):
+
+1. Receive weather/device signal.
+2. Recompute context for impacted device.
+3. Run decision + deterministic rule check.
+4. Route to auto-apply or manual review.
+
+Batch loop (hourly/daily):
+
+1. Reconcile missing artifacts and stale runs.
+2. Produce operational summaries and drift reports.
+3. Execute historical replay jobs for policy/model validation.
+
+Repository alignment:
+
+- Current code supports daily trigger and per-run orchestration use case.
+- Scripted historical replay exists (`scripts/adjust_schedule_last30d.py`); productized replay service/API and event-driven loop remain roadmap items.
+
 ## 3. Run State Machine
 
 States:
@@ -78,6 +103,12 @@ Behavior:
 - Adapter timeout: retry once with same payload and idempotency key.
 - Persistent DB failure: mark run failed and emit high-severity alert.
 
+Current implementation status:
+
+- Celery task retry wrapper exists.
+- Per-step retry/fallback policies inside orchestrated steps are only partially implemented.
+- Current task configuration retries whole-task failures (max 2 retries); provider-specific fallback chaining is not yet wired.
+
 ## 7. Idempotency and Dedupe
 
 Keys:
@@ -113,9 +144,18 @@ Response payload schema:
 
 ## 9. Failure Fallback Behavior
 
+Target behavior:
+
 - If data collection cannot produce safe weather context, fallback to baseline action.
 - If agent cannot return valid schema after retries, fallback to baseline action and mark low confidence.
 - If adapter fails after retry, run remains failed and must be manually reconciled.
+
+Safety baseline in current runtime path:
+
+- Weather defaults to Open-Meteo adapter with persisted forecast snapshots; synthetic mode is still available by config.
+- Agent defaults to heuristic mode unless `AGENT_MODE=langchain` is configured.
+- Execution uses no-op adapter, preventing accidental real hardware writes while adapter hardening is incomplete.
+- On Open-Meteo/agent errors, current flow relies on task retry and may still end in failed state; baseline fallback routing is not fully implemented yet.
 
 ## 10. Trigger Script Blueprint (Design)
 

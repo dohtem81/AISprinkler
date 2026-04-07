@@ -22,6 +22,47 @@ Excluded:
 - Online reinforcement learning
 - Dynamic soil sensor fusion outside basic optional field support
 
+## 2.1 Current Alignment Snapshot (April 2026)
+
+This document distinguishes:
+
+- Target architecture: production-grade on-prem design.
+- Current implementation: partially complete runtime path in this repository.
+
+| Component | Target | Current status |
+|---|---|---|
+| Scheduler/orchestration | Daily + event-triggered orchestration with durable retries | Daily Celery task path is implemented; event-triggered reevaluation and dead-letter handling are not implemented |
+| Weather ingestion | Primary/fallback provider adapters with staleness controls | Open-Meteo pull is wired in scheduler DI and forecast rows are persisted; automatic provider fallback on runtime failure is not yet implemented |
+| AI decision agent | LLM-backed structured recommendation | `LangChainAgentAdapter` is implemented and selectable via `AGENT_MODE`; default mode remains heuristic |
+| Rule/safety layer | Deterministic post-LLM safety constraints | Implemented and wired in `RunDailyAdjustmentUseCase` |
+| Execution/actuation | Device protocol adapter with idempotent dispatch + proof | `NoOpDeviceAdapter` is active by default; real hardware adapter remains TODO |
+| API/dashboard | Monitoring + manual review/override UI and APIs | Schedule APIs are implemented; run/manual-review APIs remain placeholder |
+| Replay/audit | Full historical replay with immutable artifacts | Scripted historical replay is implemented (`scripts/adjust_schedule_last30d.py`); full run artifact persistence and replay service/API remain incomplete |
+
+## 2.2 High-Level On-Prem Data Flow
+
+```mermaid
+flowchart LR
+	W[Weather APIs] --> WI[Weather Ingestion]
+	WI --> PR[Processing + Context Builder]
+	PR --> DE[Decision Engine\nRules then LLM]
+	DE --> SC[Scheduler/Orchestrator]
+	SC --> AG[Actuation Gateway]
+	AG --> DEV[Sprinkler Device]
+
+	SC --> PG[(PostgreSQL)]
+	WI --> PG
+	DE --> PG
+	AG --> PG
+
+	UI[Web Dashboard] --> API[FastAPI Backend]
+	API --> PG
+	API --> RP[Replay Service]
+	RP --> PG
+```
+
+Tradeoff for this repo: keep control path simple on-prem (PostgreSQL + Celery + one weather provider adapter) and add heavier event infrastructure only when replay/throughput needs justify it.
+
 ## 3. Component Model
 
 ### 3.1 Scheduler and Orchestrator
@@ -43,6 +84,12 @@ Responsibilities:
 - Normalize observations and forecasts
 - Persist snapshot used for decision
 - Refresh future forecast horizon (next 7 days) on each pull for consistent observability
+
+Current implementation note:
+
+- Scheduler DI defaults to Open-Meteo-based weather pull with persistence.
+- Synthetic weather remains available via configuration for dry-run/scaffold mode.
+- Open-Meteo failures currently fail the run path (with task-level retry) rather than switching provider automatically.
 
 ### 3.3 AI Decision Agent
 
@@ -67,6 +114,11 @@ LLM provider is **runtime-configurable** via the `LLM_PROVIDER` environment vari
 
 Model name is further overridable via `LLM_MODEL`. See `docs/LANGCHAIN_CONFIG_SPEC.md §9`.
 
+Current implementation note:
+
+- Runtime agent is selected by `AGENT_MODE` (`heuristic` or `langchain`).
+- Default is heuristic for safety while rollout hardening continues.
+
 ### 3.4 Deterministic Rule Engine
 
 Responsibilities:
@@ -82,6 +134,11 @@ Responsibilities:
 - Convert approved schedule into device command schema
 - Apply command with timeout/retry contract
 - Return execution receipt including proof fields
+
+Current implementation note:
+
+- Runtime dispatch currently uses `NoOpDeviceAdapter`.
+- Production actuation adapter remains pending.
 
 ### 3.6 Persistence Layer
 
@@ -117,6 +174,12 @@ rule_check → approval_gate → dispatching → verifying → closed | failed |
 - Explainability: every run stores rationale, rule set, and applied constraints.
 - Resilience: failures degrade to baseline schedule when safe.
 - Operability: each run is traceable end to end with one correlation id.
+
+On-prem emphasis:
+
+- Prefer fail-safe behavior over aggressive automation.
+- Keep control-path dependencies minimal.
+- Treat horizontal scaling as secondary to reliability and auditability.
 
 ## 7. Architecture Decisions
 

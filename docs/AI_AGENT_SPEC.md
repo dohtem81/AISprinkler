@@ -37,6 +37,11 @@ Output must be valid JSON with fields:
 
 Invalid output is rejected and retried under orchestration policy.
 
+Current implementation note:
+
+- Invalid JSON currently raises an error in adapter parsing.
+- There is no dedicated schema-reminder retry loop in the adapter yet; retries occur at the task/orchestration level.
+
 ## 5. Decision Policy Link
 
 Normative threshold and bound definitions are in:
@@ -72,9 +77,14 @@ Optional tools:
 
 ## 8. Failure Handling
 
-- Schema validation failure: retry with schema reminder prompt.
+- Schema validation failure: target behavior is retry with schema reminder prompt.
 - Low confidence output: send to manual review path.
-- Missing weather data: apply fallback provider logic before agent call.
+- Missing weather data: target behavior is fallback provider logic before agent call.
+
+Current implementation note:
+
+- Low-confidence routing is implemented.
+- Schema-reminder retry and provider fallback chaining are not fully implemented in runtime path yet.
 
 ## 9. Safety Constraints
 
