@@ -167,6 +167,26 @@ Planned entry points:
 - scripts/create_baseline_last30d.py
 - scripts/adjust_schedule_last30d.py
 
+Current Docker runtime note:
+
+- The `app` image does not include repository `scripts/` by default.
+- Run script entry points with a bind mount.
+
+Script command examples:
+
+- Trigger daily adjustment:
+	- `docker compose -f docker/docker-compose.yml run --rm -v "$PWD/scripts:/app/scripts:ro" app python /app/scripts/trigger_daily_adjustment.py`
+- Retry failed run:
+	- `docker compose -f docker/docker-compose.yml run --rm -v "$PWD/scripts:/app/scripts:ro" app python /app/scripts/retry_failed_run.py <run_id>`
+- Process manual reviews:
+	- `docker compose -f docker/docker-compose.yml run --rm -v "$PWD/scripts:/app/scripts:ro" app python /app/scripts/process_manual_reviews.py`
+- Pull weather history:
+	- `docker compose -f docker/docker-compose.yml run --rm -v "$PWD/scripts:/app/scripts:ro" app python /app/scripts/weather_spanishfort.py`
+- Create baseline history:
+	- `docker compose -f docker/docker-compose.yml run --rm -v "$PWD/scripts:/app/scripts:ro" app python /app/scripts/create_baseline_last30d.py`
+- Replay adjustments with LangChain:
+	- `docker compose -f docker/docker-compose.yml --profile local-llm run --rm -v "$PWD/scripts:/app/scripts:ro" -e AGENT_MODE=langchain app python /app/scripts/adjust_schedule_last30d.py`
+
 Each script must:
 
 1. Accept run context arguments.

@@ -23,6 +23,82 @@ macOS/Linux (`make`):
 - `make test-integration` (integration tests in Docker)
 - `make test-cov` (coverage in Docker)
 
+`make up-all` now starts the `local-llm` profile as well, so Ollama is included.
+
+## Running Python Scripts in Docker (Current Image Layout)
+
+Current `app` image layout includes `/app/src` and `/app/config`, but does not copy
+the repository `scripts/` folder into the container filesystem.
+
+For script execution, bind-mount the local scripts directory:
+
+- macOS/Linux:
+
+```bash
+docker compose -f docker/docker-compose.yml run --rm \
+	-v "$PWD/scripts:/app/scripts:ro" \
+	app python /app/scripts/<script_name>.py
+```
+
+- Windows PowerShell:
+
+```powershell
+docker compose -f docker/docker-compose.yml run --rm `
+	-v "${PWD}/scripts:/app/scripts:ro" `
+	app python /app/scripts/<script_name>.py
+```
+
+Examples for all current scripts:
+
+- Trigger daily adjustment:
+
+```bash
+docker compose -f docker/docker-compose.yml run --rm \
+	-v "$PWD/scripts:/app/scripts:ro" \
+	app python /app/scripts/trigger_daily_adjustment.py
+```
+
+- Retry failed run (pass run id argument):
+
+```bash
+docker compose -f docker/docker-compose.yml run --rm \
+	-v "$PWD/scripts:/app/scripts:ro" \
+	app python /app/scripts/retry_failed_run.py <run_id>
+```
+
+- Process manual reviews:
+
+```bash
+docker compose -f docker/docker-compose.yml run --rm \
+	-v "$PWD/scripts:/app/scripts:ro" \
+	app python /app/scripts/process_manual_reviews.py
+```
+
+- Pull weather history:
+
+```bash
+docker compose -f docker/docker-compose.yml run --rm \
+	-v "$PWD/scripts:/app/scripts:ro" \
+	app python /app/scripts/weather_spanishfort.py
+```
+
+- Create 30-day baseline history:
+
+```bash
+docker compose -f docker/docker-compose.yml run --rm \
+	-v "$PWD/scripts:/app/scripts:ro" \
+	app python /app/scripts/create_baseline_last30d.py
+```
+
+- Replay adjustments for last 30 days:
+
+```bash
+docker compose -f docker/docker-compose.yml run --rm \
+	-v "$PWD/scripts:/app/scripts:ro" \
+	-e AGENT_MODE=langchain \
+	app python /app/scripts/adjust_schedule_last30d.py
+```
+
 Windows PowerShell (`docker compose`):
 
 - `docker compose -f docker/docker-compose.yml up -d` (start services)
@@ -33,10 +109,30 @@ Windows PowerShell (`docker compose`):
 
 Optional local LLM via Ollama (Docker profile):
 
-- `docker compose -f docker/docker-compose.yml --profile local-llm up -d ollama` (start Ollama service)
+- `docker compose -f docker/docker-compose.yml --profile local-llm up -d ollama` (start Ollama service manually when needed)
 - Set `AGENT_MODE=langchain`, `LLM_PROVIDER=ollama`, `OLLAMA_BASE_URL=http://ollama:11434` in `.env`
 - Pull a model once: `docker compose -f docker/docker-compose.yml --profile local-llm exec ollama ollama pull llama3.2`
 - Start app/worker: `docker compose -f docker/docker-compose.yml --profile local-llm up -d app worker`
+
+## Run All Historical Pipeline (30d)
+
+One-shot Docker command sequence (weather pull, baseline history, then replay with LangChain):
+
+```bash
+docker compose -f docker/docker-compose.yml --profile local-llm up -d db redis ollama && \
+docker compose -f docker/docker-compose.yml run --rm -v "$PWD/scripts:/app/scripts:ro" app python /app/scripts/weather_spanishfort.py && \
+docker compose -f docker/docker-compose.yml run --rm -v "$PWD/scripts:/app/scripts:ro" app python /app/scripts/create_baseline_last30d.py && \
+docker compose -f docker/docker-compose.yml --profile local-llm run --rm -v "$PWD/scripts:/app/scripts:ro" -e AGENT_MODE=langchain app python /app/scripts/adjust_schedule_last30d.py
+```
+
+Equivalent `make` flow:
+
+```bash
+make up-all
+make weather-history
+make baseline-history
+make replay-adjustments
+```
 
 Database and cache viewers included in Docker Compose:
 

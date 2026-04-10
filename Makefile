@@ -1,6 +1,7 @@
 .PHONY: help build up down test test-unit test-integration lint typecheck migrate seed logs weather-history
 
 DOCKER_COMPOSE = docker compose -f docker/docker-compose.yml
+DOCKER_COMPOSE_LOCAL_LLM = docker compose -f docker/docker-compose.yml --profile local-llm
 
 # Runtime and test commands in this repository are Docker-only.
 
@@ -15,8 +16,8 @@ build:  ## Build all Docker images
 up:  ## Start all services (detached)
 	$(DOCKER_COMPOSE) up -d db redis
 
-up-all:  ## Start all services including app and worker
-	$(DOCKER_COMPOSE) up -d
+up-all:  ## Start all services including app, worker, and ollama
+	$(DOCKER_COMPOSE_LOCAL_LLM) up -d
 
 down:  ## Stop and remove all containers
 	$(DOCKER_COMPOSE) down
@@ -68,16 +69,22 @@ fmt:  ## Format code with ruff formatter
 # ── Trigger Scripts ───────────────────────────────────────────────────────────
 
 trigger-daily:  ## Trigger daily adjustment run manually in Docker
-	$(DOCKER_COMPOSE) run --rm app python scripts/trigger_daily_adjustment.py
+	$(DOCKER_COMPOSE) run --rm -v "$$(pwd)/scripts:/app/scripts:ro" app python /app/scripts/trigger_daily_adjustment.py
 
 retry-run:  ## Retry a failed run in Docker (ARGS: RUN_ID=<uuid>)
-	$(DOCKER_COMPOSE) run --rm app python scripts/retry_failed_run.py $(RUN_ID)
+	$(DOCKER_COMPOSE) run --rm -v "$$(pwd)/scripts:/app/scripts:ro" app python /app/scripts/retry_failed_run.py $(RUN_ID)
 
 process-reviews:  ## Process pending manual review queue in Docker
-	$(DOCKER_COMPOSE) run --rm app python scripts/process_manual_reviews.py
+	$(DOCKER_COMPOSE) run --rm -v "$$(pwd)/scripts:/app/scripts:ro" app python /app/scripts/process_manual_reviews.py
 
 weather-history:  ## Backfill weather history into DB (HISTORY_DAYS env controls window)
-	$(DOCKER_COMPOSE) run --rm app python scripts/weather_spanishfort.py
+	$(DOCKER_COMPOSE) run --rm -v "$$(pwd)/scripts:/app/scripts:ro" app python /app/scripts/weather_spanishfort.py
+
+baseline-history:  ## Create dated baseline history rows (BASELINE_HISTORY_DAYS env controls window)
+	$(DOCKER_COMPOSE) run --rm -v "$$(pwd)/scripts:/app/scripts:ro" app python /app/scripts/create_baseline_last30d.py
+
+replay-adjustments:  ## Replay historical adjustments (ADJUST_HISTORY_DAYS env controls window)
+	$(DOCKER_COMPOSE_LOCAL_LLM) run --rm -v "$$(pwd)/scripts:/app/scripts:ro" -e AGENT_MODE=langchain app python /app/scripts/adjust_schedule_last30d.py
 
 # ── Dev ───────────────────────────────────────────────────────────────────────
 
