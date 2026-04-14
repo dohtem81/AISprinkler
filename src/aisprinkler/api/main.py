@@ -6,7 +6,7 @@ from contextlib import asynccontextmanager
 
 from fastapi import FastAPI
 
-from aisprinkler.api.routers import runs, schedules
+from aisprinkler.api.routers import runs, schedules, weather
 from aisprinkler.infrastructure.logging_config import configure_logging
 from aisprinkler.infrastructure.persistence.bootstrap import bootstrap_database
 from aisprinkler.infrastructure.persistence.db import dispose_engine
@@ -32,6 +32,7 @@ app = FastAPI(
 
 app.include_router(runs.router, prefix="/api/v1/runs", tags=["runs"])
 app.include_router(schedules.router, prefix="/api/v1/schedules", tags=["schedules"])
+app.include_router(weather.router, prefix="/api/v1/weather", tags=["weather"])
 
 
 @app.get("/health")

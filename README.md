@@ -188,7 +188,13 @@ AISprinkler starts from a daily preset irrigation schedule stored in a database,
 - Dated schedule persistence is implemented with immutable `original_baseline_schedule`
 	and versioned `current_baseline_schedule` rows.
 - Weather ingestion persists hourly data and refreshes the upcoming horizon by replacing
-	future forecast rows on each pull.
+  future forecast rows on each pull.
+- Manual forecast refresh is available via `POST /api/v1/weather/refresh` for
+  external callers such as dashboards or webhooks, and it uses the configured
+  `WEATHER_PROVIDER` rather than being tied to a specific provider in the API
+  layer. The endpoint succeeds only when the configured provider implements the
+  forecast-refresh contract; otherwise it returns a `400` with a clear
+  configuration error.
 - Forecast horizon supports next 7 days (hourly + daily rollups).
 - LLM prompting is driven by `config/SPRINKLER_LLM_RULES.md` and guarded by
 	post-parse coercion for clearly invalid/copy-like outputs.
@@ -197,7 +203,9 @@ AISprinkler starts from a daily preset irrigation schedule stored in a database,
 - Historical support scripts exist for baseline backfill and replay:
 	`scripts/create_baseline_last30d.py` and `scripts/adjust_schedule_last30d.py`.
 - Runtime defaults remain safety-first: `AGENT_MODE=heuristic` and no-op execution adapter for dispatch.
-- Weather runtime default is Open-Meteo; synthetic weather can be selected by config.
+- Weather runtime is selected via `WEATHER_PROVIDER`. `open_meteo` remains the
+  default, `openweather` can be configured with `OPENWEATHER_API_KEY`, and
+  `synthetic` remains available for dry-run/scaffold mode.
 - Automatic weather-provider fallback chaining and run/manual-review API endpoints are still in progress.
 
 ## LLM Provider Configuration

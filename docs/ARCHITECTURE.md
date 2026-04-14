@@ -32,7 +32,7 @@ This document distinguishes:
 | Component | Target | Current status |
 |---|---|---|
 | Scheduler/orchestration | Daily + event-triggered orchestration with durable retries | Daily Celery task path is implemented; event-triggered reevaluation and dead-letter handling are not implemented |
-| Weather ingestion | Primary/fallback provider adapters with staleness controls | Open-Meteo pull is wired in scheduler DI and forecast rows are persisted; automatic provider fallback on runtime failure is not yet implemented |
+| Weather ingestion | Primary/fallback provider adapters with staleness controls | Weather provider selection is runtime-configurable via `WEATHER_PROVIDER`; refresh-capable providers can persist forecast rows through a provider-neutral contract, but automatic provider fallback on runtime failure is not yet implemented |
 | AI decision agent | LLM-backed structured recommendation | `LangChainAgentAdapter` is implemented and selectable via `AGENT_MODE`; default mode remains heuristic |
 | Rule/safety layer | Deterministic post-LLM safety constraints | Implemented and wired in `RunDailyAdjustmentUseCase` |
 | Execution/actuation | Device protocol adapter with idempotent dispatch + proof | `NoOpDeviceAdapter` is active by default; real hardware adapter remains TODO |
@@ -61,7 +61,7 @@ flowchart LR
 	RP --> PG
 ```
 
-Tradeoff for this repo: keep control path simple on-prem (PostgreSQL + Celery + one weather provider adapter) and add heavier event infrastructure only when replay/throughput needs justify it.
+Tradeoff for this repo: keep control path simple on-prem (PostgreSQL + Celery + one configured weather provider at a time) and add heavier event infrastructure only when replay/throughput needs justify it.
 
 ## 3. Component Model
 
@@ -87,9 +87,14 @@ Responsibilities:
 
 Current implementation note:
 
-- Scheduler DI defaults to Open-Meteo-based weather pull with persistence.
-- Synthetic weather remains available via configuration for dry-run/scaffold mode.
-- Open-Meteo failures currently fail the run path (with task-level retry) rather than switching provider automatically.
+- Scheduler DI resolves weather through `WEATHER_PROVIDER` rather than binding API
+  or orchestration code to a specific provider.
+- `open_meteo` is the default refresh-capable provider; `openweather` and
+  `synthetic` remain configurable runtime options.
+- Manual forecast refresh (`POST /api/v1/weather/refresh`) uses the configured
+  provider only when that provider implements the forecast-refresh contract.
+- Provider failures currently fail the run path (with task-level retry) rather
+  than switching provider automatically.
 
 ### 3.3 AI Decision Agent
 

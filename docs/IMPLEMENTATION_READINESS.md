@@ -53,7 +53,10 @@
 
 ## Current Reality Check (April 2026)
 
-- Implemented now: core run state orchestration, Open-Meteo weather ingestion with persistence, configurable agent mode (`heuristic` and `langchain`), schedule persistence/query APIs, and agent trace persistence.
+- Implemented now: core run state orchestration, configurable weather-provider
+  wiring with refresh support for refresh-capable providers, configurable agent
+  mode (`heuristic` and `langchain`), schedule persistence/query APIs, and
+  agent trace persistence.
 - Missing for production: runtime fallback weather chain, non-noop hardware actuation, completed run/manual review APIs, robust retry/dead-letter behavior, production replay service/API workflows, and full observability/alert coverage.
 
 ## To Do (Priority Backlog)

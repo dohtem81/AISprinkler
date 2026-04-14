@@ -2,16 +2,21 @@
 
 from __future__ import annotations
 
+from dataclasses import dataclass
 import logging
 import os
-from datetime import datetime
+from datetime import datetime, timezone
+from typing import Any
 from uuid import UUID
 
 from sqlalchemy.ext.asyncio import AsyncSession
 
 from aisprinkler.application.ports.agent_port import AgentPort
 from aisprinkler.application.ports.weather_port import WeatherPort
-from aisprinkler.application.dtos.adjustment_dtos import DailyAdjustmentRequest, DailyAdjustmentResult
+from aisprinkler.application.dtos.adjustment_dtos import (
+    DailyAdjustmentRequest,
+    DailyAdjustmentResult,
+)
 from aisprinkler.application.use_cases.run_daily_adjustment import RunDailyAdjustmentUseCase
 from aisprinkler.domain.services.rule_engine import RuleEngine
 from aisprinkler.domain.value_objects.agent_decision_trace import AgentDecisionTrace
@@ -25,9 +30,37 @@ from aisprinkler.infrastructure.persistence.db import get_session_factory
 from aisprinkler.infrastructure.persistence.run_repo import SqlAlchemyRunRepository
 from aisprinkler.infrastructure.persistence.schedule_repo import SqlAlchemyScheduleRepository
 from aisprinkler.infrastructure.persistence.weather_repo import WeatherRepository
+from aisprinkler.infrastructure.weather.forecast_refresh import (
+    ForecastRefreshPort,
+    build_weather_context_from_rows,
+)
 from aisprinkler.infrastructure.weather.open_meteo_adapter import OpenMeteoAdapter
+from aisprinkler.infrastructure.weather.openweather_adapter import OpenWeatherAdapter
 
 logger = logging.getLogger(__name__)
+
+
+@dataclass(frozen=True)
+class WeatherProviderSettings:
+    lat: float
+    lon: float
+    zipcode: str
+    city: str | None
+    state_code: str | None
+
+
+@dataclass(frozen=True)
+class WeatherForecastRefreshResult:
+    location_id: UUID
+    zipcode: str
+    city: str | None
+    state_code: str | None
+    provider: str
+    days: int
+    rows_fetched: int
+    rows_persisted: int
+    fetched_at: datetime
+
 
 class _SyntheticWeatherAdapter(WeatherPort):
     async def get_weather_context(self, device_id: UUID, as_of: datetime) -> WeatherContext:
@@ -43,51 +76,32 @@ class _SyntheticWeatherAdapter(WeatherPort):
         )
 
 
-class _PersistingOpenMeteoWeatherAdapter(WeatherPort):
-    """Fetch forecast from Open-Meteo, persist it, then return WeatherContext."""
+class _PersistingForecastWeatherAdapter(WeatherPort):
+    """Fetch forecast from configured provider, persist it, then build context."""
 
     def __init__(
         self,
         session: AsyncSession,
-        lat: float,
-        lon: float,
-        zipcode: str,
-        city: str | None,
-        state_code: str | None,
+        provider: ForecastRefreshPort,
+        settings: WeatherProviderSettings,
     ) -> None:
         self._session = session
-        self._lat = lat
-        self._lon = lon
-        self._zipcode = zipcode
-        self._city = city
-        self._state_code = state_code
-        self._meteo = OpenMeteoAdapter(lat=lat, lon=lon)
+        self._provider = provider
+        self._settings = settings
 
     async def get_weather_context(self, device_id: UUID, as_of: datetime) -> WeatherContext:
-        rows = await self._meteo.fetch_forecast_hours(days=7)
-        weather_repo = WeatherRepository(self._session)
-        location_id = await weather_repo.get_or_create_location(
-            zipcode=self._zipcode,
-            lat=self._lat,
-            lon=self._lon,
-            city=self._city,
-            state_code=self._state_code,
+        rows, _ = await _persist_forecast_rows(
+            session=self._session,
+            provider=self._provider,
+            settings=self._settings,
+            days=7,
+            device_id=device_id,
         )
-        persisted = await weather_repo.upsert_hourly_rows(location_id, rows)
-        logger.info(
-            "Persisted forecast rows for runtime adjustment",
-            extra={
-                "action": "weather_pull",
-                "component": "weather",
-                "location": "spanish_fort_al",
-                "weather_provider": "open_meteo",
-                "device_id": str(device_id),
-                "rows_fetched": len(rows),
-                "rows_persisted": persisted,
-                "status": "success",
-            },
+        return build_weather_context_from_rows(
+            rows,
+            as_of,
+            provider_name=self._provider.provider_name,
         )
-        return OpenMeteoAdapter.build_context_from_rows(rows, as_of)
 
 
 class _HeuristicAgentAdapter(AgentPort):
@@ -177,28 +191,124 @@ def _build_agent_adapter() -> AgentPort:
 
 
 def _build_weather_adapter(session: AsyncSession) -> WeatherPort:
-    provider = os.getenv("WEATHER_PROVIDER", "open_meteo").strip().lower()
+    provider = _build_configured_weather_provider()
+    if isinstance(provider, ForecastRefreshPort):
+        return _PersistingForecastWeatherAdapter(
+            session=session,
+            provider=provider,
+            settings=_get_weather_provider_settings(),
+        )
+    return provider
+
+
+def _get_weather_provider_settings() -> WeatherProviderSettings:
+    return WeatherProviderSettings(
+        lat=_get_float("WEATHER_LAT", 30.676),
+        lon=_get_float("WEATHER_LON", -87.914),
+        zipcode=os.getenv("WEATHER_ZIPCODE", "36527"),
+        city=os.getenv("WEATHER_CITY", "Spanish Fort"),
+        state_code=os.getenv("WEATHER_STATE", "AL"),
+    )
+
+
+def _get_weather_provider_name() -> str:
+    return os.getenv("WEATHER_PROVIDER", "open_meteo").strip().lower()
+
+
+def _build_configured_weather_provider() -> WeatherPort:
+    provider = _get_weather_provider_name()
+    settings = _get_weather_provider_settings()
     if provider == "synthetic":
         return _SyntheticWeatherAdapter()
 
     if provider == "open_meteo":
-        lat = _get_float("WEATHER_LAT", 30.676)
-        lon = _get_float("WEATHER_LON", -87.914)
-        zipcode = os.getenv("WEATHER_ZIPCODE", "36527")
-        city = os.getenv("WEATHER_CITY", "Spanish Fort")
-        state_code = os.getenv("WEATHER_STATE", "AL")
-        return _PersistingOpenMeteoWeatherAdapter(
-            session=session,
-            lat=lat,
-            lon=lon,
-            zipcode=zipcode,
-            city=city,
-            state_code=state_code,
-        )
+        return OpenMeteoAdapter(lat=settings.lat, lon=settings.lon)
+
+    if provider == "openweather":
+        api_key = os.getenv("OPENWEATHER_API_KEY", "").strip()
+        if not api_key:
+            raise ValueError(
+                "OPENWEATHER_API_KEY is required when WEATHER_PROVIDER=openweather"
+            )
+        return OpenWeatherAdapter(api_key=api_key, lat=settings.lat, lon=settings.lon)
 
     raise ValueError(
-        f"Invalid WEATHER_PROVIDER '{provider}'. Supported values: open_meteo, synthetic"
+        "Invalid WEATHER_PROVIDER "
+        f"'{provider}'. Supported values: open_meteo, openweather, synthetic"
     )
+
+
+def _build_refreshable_weather_provider() -> tuple[ForecastRefreshPort, WeatherProviderSettings]:
+    provider = _build_configured_weather_provider()
+    if isinstance(provider, ForecastRefreshPort):
+        return provider, _get_weather_provider_settings()
+
+    raise ValueError(
+        "Configured WEATHER_PROVIDER "
+        f"'{_get_weather_provider_name()}' does not support forecast refresh"
+    )
+
+
+async def _persist_forecast_rows(
+    session: AsyncSession,
+    *,
+    provider: ForecastRefreshPort,
+    settings: WeatherProviderSettings,
+    days: int,
+    device_id: UUID | None,
+) -> tuple[list[dict[str, Any]], WeatherForecastRefreshResult]:
+    fetched_at = datetime.now(timezone.utc)
+    rows = await provider.fetch_forecast_hours(days=days)
+    weather_repo = WeatherRepository(session)
+    location_id = await weather_repo.get_or_create_location(
+        zipcode=settings.zipcode,
+        lat=settings.lat,
+        lon=settings.lon,
+        city=settings.city,
+        state_code=settings.state_code,
+    )
+    persisted = await weather_repo.upsert_hourly_rows(location_id, rows)
+    logger.info(
+        "Persisted forecast rows",
+        extra={
+            "action": "weather_pull",
+            "component": "weather",
+            "location": os.getenv("WEATHER_LOCATION_LABEL", "spanish_fort_al"),
+            "weather_provider": provider.provider_name,
+            "device_id": str(device_id) if device_id is not None else None,
+            "rows_fetched": len(rows),
+            "rows_persisted": persisted,
+            "status": "success",
+        },
+    )
+    return rows, WeatherForecastRefreshResult(
+        location_id=location_id,
+        zipcode=settings.zipcode,
+        city=settings.city,
+        state_code=settings.state_code,
+        provider=provider.provider_name,
+        days=days,
+        rows_fetched=len(rows),
+        rows_persisted=persisted,
+        fetched_at=fetched_at,
+    )
+
+
+async def refresh_weather_forecast(
+    session: AsyncSession,
+    *,
+    days: int = 7,
+    device_id: UUID | None = None,
+) -> WeatherForecastRefreshResult:
+    provider, settings = _build_refreshable_weather_provider()
+    _, result = await _persist_forecast_rows(
+        session=session,
+        provider=provider,
+        settings=settings,
+        days=days,
+        device_id=device_id,
+    )
+    return result
 
 
 def build_use_case(session: AsyncSession) -> RunDailyAdjustmentUseCase:

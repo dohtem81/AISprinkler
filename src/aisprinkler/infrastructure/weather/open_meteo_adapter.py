@@ -12,6 +12,10 @@ import httpx
 
 from aisprinkler.application.ports.weather_port import WeatherPort
 from aisprinkler.domain.value_objects.weather_context import WeatherContext
+from aisprinkler.infrastructure.weather.forecast_refresh import (
+    ForecastRefreshPort,
+    build_weather_context_from_rows,
+)
 
 logger = logging.getLogger(__name__)
 
@@ -26,9 +30,10 @@ _HISTORY_HOURLY = (
     "temperature_2m,relative_humidity_2m,precipitation,"
     "rain,snowfall,weather_code,wind_speed_10m,wind_direction_10m"
 )
+_PROVIDER_NAME = "open_meteo"
 
 
-class OpenMeteoAdapter(WeatherPort):
+class OpenMeteoAdapter(WeatherPort, ForecastRefreshPort):
     """Open-Meteo implementation for forecast and history retrieval."""
 
     def __init__(self, lat: float, lon: float, timeout: float = 15.0) -> None:
@@ -36,6 +41,10 @@ class OpenMeteoAdapter(WeatherPort):
         self._lon = lon
         self._timeout = timeout
         self._location_label = os.getenv("WEATHER_LOCATION_LABEL", "spanish_fort_al")
+
+    @property
+    def provider_name(self) -> str:
+        return _PROVIDER_NAME
 
     async def get_weather_context(
         self, device_id: UUID, as_of: datetime
@@ -48,7 +57,7 @@ class OpenMeteoAdapter(WeatherPort):
                 "action": "weather_context_build",
                 "component": "weather",
                 "location": self._location_label,
-                "weather_provider": "open_meteo",
+                "weather_provider": self.provider_name,
                 "device_id": str(device_id),
                 "rows_used": len(rows),
                 "rain_forecast_next_24h_mm": context.rain_forecast_next_24h_mm,
@@ -64,7 +73,7 @@ class OpenMeteoAdapter(WeatherPort):
                 "action": "weather_pull",
                 "component": "weather",
                 "location": self._location_label,
-                "weather_provider": "open_meteo",
+                "weather_provider": self.provider_name,
                 "pull_kind": "forecast",
                 "days": days,
             },
@@ -79,7 +88,7 @@ class OpenMeteoAdapter(WeatherPort):
                     "action": "weather_pull",
                     "component": "weather",
                     "location": self._location_label,
-                    "weather_provider": "open_meteo",
+                    "weather_provider": self.provider_name,
                     "pull_kind": "forecast",
                     "status": "failure",
                 },
@@ -92,7 +101,7 @@ class OpenMeteoAdapter(WeatherPort):
                 "action": "weather_pull",
                 "component": "weather",
                 "location": self._location_label,
-                "weather_provider": "open_meteo",
+                "weather_provider": self.provider_name,
                 "pull_kind": "forecast",
                 "status": "success",
                 "rows_fetched": len(rows),
@@ -109,7 +118,7 @@ class OpenMeteoAdapter(WeatherPort):
                 "action": "weather_pull",
                 "component": "weather",
                 "location": self._location_label,
-                "weather_provider": "open_meteo",
+                "weather_provider": self.provider_name,
                 "pull_kind": "history",
                 "start_date": start_date.isoformat(),
                 "end_date": end_date.isoformat(),
@@ -125,7 +134,7 @@ class OpenMeteoAdapter(WeatherPort):
                     "action": "weather_pull",
                     "component": "weather",
                     "location": self._location_label,
-                    "weather_provider": "open_meteo",
+                    "weather_provider": self.provider_name,
                     "pull_kind": "history",
                     "status": "failure",
                 },
@@ -138,7 +147,7 @@ class OpenMeteoAdapter(WeatherPort):
                 "action": "weather_pull",
                 "component": "weather",
                 "location": self._location_label,
-                "weather_provider": "open_meteo",
+                "weather_provider": self.provider_name,
                 "pull_kind": "history",
                 "status": "success",
                 "rows_fetched": len(rows),
@@ -178,38 +187,10 @@ class OpenMeteoAdapter(WeatherPort):
         rows: list[dict[str, Any]],
         as_of: datetime,
     ) -> WeatherContext:
-        if not rows:
-            return WeatherContext(
-                rain_last_24h_mm=0.0,
-                rain_forecast_next_24h_mm=0.0,
-                rain_probability_pct=0.0,
-                provider="open_meteo",
-                is_fallback_provider=False,
-            )
-
-        now = as_of if as_of.tzinfo is not None else as_of.replace(tzinfo=timezone.utc)
-        past_cutoff = now - timedelta(hours=24)
-        future_cutoff = now + timedelta(hours=24)
-
-        last_24h_rain = sum(
-            r["rain_mm"] or 0.0
-            for r in rows
-            if past_cutoff <= r["forecast_hour"] <= now
-        )
-        next_rows = [r for r in rows if now < r["forecast_hour"] <= future_cutoff]
-        next_24h_rain = sum(r["rain_mm"] or 0.0 for r in next_rows)
-        max_prob = max((r["rain_probability_pct"] or 0.0 for r in next_rows), default=0.0)
-        current = min(rows, key=lambda r: abs((r["forecast_hour"] - now).total_seconds()))
-
-        return WeatherContext(
-            rain_last_24h_mm=round(last_24h_rain, 2),
-            rain_forecast_next_24h_mm=round(next_24h_rain, 2),
-            rain_probability_pct=round(max_prob, 1),
-            temperature_c=current["temperature_c"],
-            humidity_pct=current["humidity_pct"],
-            wind_speed_kmh=current["wind_speed_kmh"],
-            provider="open_meteo",
-            is_fallback_provider=False,
+        return build_weather_context_from_rows(
+            rows,
+            as_of,
+            provider_name=_PROVIDER_NAME,
         )
 
 
@@ -243,7 +224,7 @@ def _parse_hourly_rows(
                 else None,
                 "weather_description": None,
                 "is_observed": is_observed,
-                "provider": "open_meteo",
+                "provider": _PROVIDER_NAME,
             }
         )
     return rows

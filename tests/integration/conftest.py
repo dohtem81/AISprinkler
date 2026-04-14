@@ -20,14 +20,19 @@ def _db_url() -> str:
     )
 
 
+async def _reset_schema(engine: object) -> None:
+    async with engine.begin() as conn:  # type: ignore[attr-defined]
+        await conn.exec_driver_sql("DROP SCHEMA IF EXISTS public CASCADE")
+        await conn.exec_driver_sql("CREATE SCHEMA public")
+        await conn.run_sync(Base.metadata.create_all)
+
+
 @pytest_asyncio.fixture()
 async def db_engine() -> AsyncGenerator[object, None]:
     engine = create_async_engine(_db_url(), echo=False)
-    async with engine.begin() as conn:
-        await conn.run_sync(Base.metadata.create_all)
+    await _reset_schema(engine)
     yield engine
-    async with engine.begin() as conn:
-        await conn.run_sync(Base.metadata.drop_all)
+    await _reset_schema(engine)
     await engine.dispose()
 
 

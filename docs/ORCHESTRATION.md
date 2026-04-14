@@ -29,6 +29,7 @@ Trigger id format:
 Current implementation status:
 
 - Daily trigger path is implemented via Celery task.
+- Manual forecast refresh is implemented via `POST /api/v1/weather/refresh`.
 - Event-triggered reevaluation is planned but not implemented in runtime workflow.
 
 ### 2.3 Real-Time vs Batch Event Flow
@@ -152,10 +153,15 @@ Target behavior:
 
 Safety baseline in current runtime path:
 
-- Weather defaults to Open-Meteo adapter with persisted forecast snapshots; synthetic mode is still available by config.
+- Weather provider is selected via `WEATHER_PROVIDER`; `open_meteo` remains the
+  default and `synthetic` is still available by config.
+- Manual forecast refresh uses the configured provider through a provider-neutral
+  refresh contract and returns a configuration error when the provider does not
+  support forecast refresh.
 - Agent defaults to heuristic mode unless `AGENT_MODE=langchain` is configured.
 - Execution uses no-op adapter, preventing accidental real hardware writes while adapter hardening is incomplete.
-- On Open-Meteo/agent errors, current flow relies on task retry and may still end in failed state; baseline fallback routing is not fully implemented yet.
+- On weather-provider/agent errors, current flow relies on task retry and may
+  still end in failed state; baseline fallback routing is not fully implemented yet.
 
 ## 10. Trigger Script Blueprint (Design)
 
