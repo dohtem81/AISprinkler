@@ -91,14 +91,31 @@ services:
       - ./grafana/dashboards:/var/lib/grafana/dashboards:ro
 
   # ── Local LLM (Optional) ─────────────────────────────────────────────────
-  # Start with: docker compose -f docker/docker-compose.yml --profile local-llm up -d
+  # CPU:  docker compose -f docker/docker-compose.yml --profile local-llm up -d
+  # GPU:  docker compose -f docker/docker-compose.yml --profile local-llm-gpu up -d
+  #       Requires: NVIDIA Container Toolkit + nvidia-container-runtime installed on host
+  # ollama:
+  #   image: ollama/ollama:latest
+  #   profiles: ["local-llm"]
+  #   ports:
+  #     - "11434:11434"
+  #   volumes:
+  #     - ollama_data:/root/.ollama
+
   ollama:
     image: ollama/ollama:latest
-    profiles: ["local-llm"]
+    profiles: ["local-llm-gpu"]
     ports:
       - "11434:11434"
     volumes:
       - ollama_data:/root/.ollama
+    deploy:
+      resources:
+        reservations:
+          devices:
+            - driver: nvidia
+              count: all
+              capabilities: [gpu]
 
   # ── FastAPI App ──────────────────────────────────────────────────────────────
   app:
